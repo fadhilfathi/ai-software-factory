@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/example/project/internal/model"
 	"github.com/example/project/internal/store"
 	"github.com/example/project/internal/validation"
 	"go.uber.org/zap"

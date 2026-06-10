@@ -51,7 +51,7 @@ export function useAutoSave<T>(key: string, initialValue: T, debounceMs = 1000) 
       }, debounceMs);
       setTimer(t);
     },
-    [debounceMs, timer],
+    [debounceMs, timer, key],
   );
 
   return { value, save };

@@ -11,8 +11,6 @@ import type {
   Task,
   UpdateTaskPayload,
   Agent,
-  AgentType,
-  TaskStatus,
   PaginatedResponse,
   APIResponse,
   DashboardMetrics,
@@ -25,102 +23,73 @@ export function useProjects(filters?: Record<string, string | undefined>) {
   return useQuery({
     queryKey: queryKeys.projects.list(filters),
     queryFn: () =>
-      api.get<PaginatedResponse<Project>>("/projects", { params: filters }),
-    select: (data) => data,
-  });
-}
-
-export function useProject(id: string) {
-  return useQuery({
-    queryKey: queryKeys.projects.detail(id),
-    queryFn: () => api.get<APIResponse<Project>>(`/projects/${id}`),
-    enabled: !!id,
-    select: (data) => data.data,
-  });
-}
-
-export function useCreateProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: CreateProjectPayload) =>
-      api.post<APIResponse<Project>>("/projects", payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.projects.all });
-    },
+      api.get<APIResponse<{ projects: Project[] }>>("/v1/projects", filters as Record<string, string>),
   });
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
-export function useTasks(projectId: string) {
+export function useTasks(projectId?: string) {
   return useQuery({
-    queryKey: queryKeys.tasks.list({ project_id: projectId }),
+    queryKey: queryKeys.tasks.list(projectId),
     queryFn: () =>
-      api.get<PaginatedResponse<Task>>(`/projects/${projectId}/tasks`),
+      api.get<APIResponse<{ tasks: Task[] }>>(`/v1/tasks`, { project_id: projectId }),
     enabled: !!projectId,
-    select: (data) => data.data,
   });
 }
 
-export function useUpdateTask() {
+export function useTask(id: string) {
+  return useQuery({
+    queryKey: queryKeys.tasks.detail(id),
+    queryFn: () => api.get<APIResponse<{ task: Task }>>(`/v1/tasks/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...payload
-    }: UpdateTaskPayload & { id: string }) =>
-      api.patch<APIResponse<Task>>(`/tasks/${id}`, payload),
+    mutationFn: (payload: CreateProjectPayload) =>
+      api.post<APIResponse<{ task: Task }>>("/v1/tasks", payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
     },
   });
 }
 
-// ─── Agents ──────────────────────────────────────────────────────────────────
-
-export function useAgents(filters?: Record<string, string | undefined>) {
-  return useQuery({
-    queryKey: queryKeys.agents.metrics(filters),
-    queryFn: () => api.get<APIResponse<Agent[]>>("/agents", { params: filters }),
-    select: (data) => data.data,
-  });
-}
-
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-
-export function useDashboardMetrics() {
-  return useQuery({
-    queryKey: ["dashboard", "metrics"],
-    queryFn: () => api.get<APIResponse<DashboardMetrics>>("/dashboard/metrics"),
-    select: (data) => data.data,
-  });
-}
-
-export function useRecentActivity() {
-  return useQuery({
-    queryKey: ["dashboard", "activity"],
-    queryFn: () => api.get<PaginatedResponse<ActivityItem>>("/activity", { params: { limit: "10" } }),
-    select: (data) => data.data,
-  });
-}
-
-// ─── Settings ────────────────────────────────────────────────────────────────
-
-export function useSettings() {
-  return useQuery({
-    queryKey: queryKeys.settings.all,
-    queryFn: () => api.get<APIResponse<Record<string, unknown>>>("/settings"),
-    select: (data) => data.data,
-  });
-}
-
-export function useUpdateSettings() {
+export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (settings: Record<string, unknown>) =>
-      api.patch<APIResponse<Record<string, unknown>>>("/settings", settings),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.settings.all });
+    mutationFn: ({ id, ...payload }: UpdateTaskPayload & { id: string }) =>
+      api.put<APIResponse<{ task: Task }>>(`/v1/tasks/${id}`, payload),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(vars.id) });
     },
+  });
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+
+export function useAgents() {
+  return useQuery({
+    queryKey: queryKeys.agents.list(),
+    queryFn: () => api.get<APIResponse<{ agents: Agent[] }>>("/v1/agents"),
+  });
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+export function useDashboard() {
+  return useQuery({
+    queryKey: queryKeys.dashboard.metrics(),
+    queryFn: () => api.get<APIResponse<{ metrics: DashboardMetrics }>>("/v1/dashboard"),
+  });
+}
+
+export function useActivity() {
+  return useQuery({
+    queryKey: queryKeys.dashboard.activity(),
+    queryFn: () => api.get<APIResponse<{ activity: ActivityItem[] }>>("/v1/dashboard/activity"),
   });
 }
