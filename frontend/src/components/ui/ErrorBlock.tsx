@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -45,8 +46,6 @@ ErrorBlock.Page = function ErrorPage({
   backHref,
   backLabel = "← Back",
 }: ErrorPageProps) {
-  // Use dynamic import to avoid forcing next/link on all consumers
-  const Link = require("next/link").default;
   return (
     <div>
       <div className="rounded-lg border border-red-800 bg-red-950/50 p-6 text-center">
