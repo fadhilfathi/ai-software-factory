@@ -1,0 +1,29 @@
+package model
+
+import "time"
+
+// ProjectStatus represents the lifecycle state of a project.
+type ProjectStatus string
+
+const (
+	ProjectInitializing ProjectStatus = "initializing"
+	ProjectInProgress   ProjectStatus = "in_progress"
+	ProjectCompleted    ProjectStatus = "completed"
+	ProjectArchived     ProjectStatus = "archived"
+)
+
+// Project represents a software project within the factory.
+type Project struct {
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description,omitempty"`
+	Status        ProjectStatus `json:"status"`
+	Template      string        `json:"template,omitempty"`
+	Progress      int           `json:"progress,omitempty"`
+	ActiveAgents  int           `json:"active_agents,omitempty"`
+	AgentsSpawned []string      `json:"agents_spawned,omitempty"`
+	Artifacts     []interface{} `json:"artifacts,omitempty"`
+	Agents        []interface{} `json:"agents,omitempty"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+}

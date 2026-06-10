@@ -1,0 +1,32 @@
+/* ─── Design Token CSS Variables ─── */
+/* These are applied at the component level via Tailwind v4 @theme.
+   This file exists for runtime token overrides from the API. */
+
+:root {
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+  --color-primary-light: rgba(16, 185, 129, 0.1);
+  --color-surface: #111827;
+  --color-surface-alt: #1f2937;
+  --color-surface-elevated: #030712;
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-border: #1f2937;
+  --color-border-hover: #374151;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+  --color-success: #10b981;
+}
+
+/* Animation tokens */
+:root {
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}

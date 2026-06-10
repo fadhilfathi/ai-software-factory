@@ -1,1 +1,8 @@
-node_modules/\n.env\n.env.local\n__pycache__/\n*.pyc\n.DS_Store\nThumbs.db
+node_modules/
+build/
+.env
+.env.local
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

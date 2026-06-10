@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go build artifacts (keep clean, don't ship stale binaries)
+/bin/
+*.exe
+*.test
+*.out
+
+# Don't blow the cache on docs/changelogs generated outside the build
+README.md
