@@ -17,7 +17,7 @@ func publicRoutes(r *http.Request) bool {
 		"POST /v1/users/register":  true,
 	}
 	key := r.Method + " " + r.URL.Path
-	return public[key] || strings.HasPrefix(r.URL.Path, "/v1/code/") // code file reads are public for now
+	return public[key]
 }
 
 // New builds and returns the configured HTTP handler with all routes registered
@@ -86,7 +86,7 @@ func New(svc *service.Services) http.Handler {
 	h = middleware.RequestID(h)
 	h = middleware.Recovery(h)
 	h = middleware.Logger(h)
-	h = middleware.Auth(publicRoutes)(h)
+	h = middleware.Auth(svc.Auth, publicRoutes)(h)
 
 	return h
 }

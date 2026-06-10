@@ -17,9 +17,23 @@ export const queryKeys = {
   },
   agents: {
     all: ["agents"] as const,
+    list: () => ["agents", "list"] as const,
+    detail: (id: string) => ["agents", "detail", id] as const,
     metrics: (filters?: Record<string, string | undefined>) =>
       ["agents", "metrics", filters] as const,
     history: (agentId: string) => ["agents", "history", agentId] as const,
+  },
+  dashboard: {
+    metrics: () => ["dashboard"] as const,
+    activity: () => ["dashboard", "activity"] as const,
+  },
+  reviews: {
+    all: ["reviews"] as const,
+    detail: (id: string) => ["reviews", "detail", id] as const,
+  },
+  deployments: {
+    all: ["deployments"] as const,
+    detail: (id: string) => ["deployments", "detail", id] as const,
   },
   vision: {
     document: ["vision", "document"] as const,
@@ -33,4 +47,7 @@ export const queryKeys = {
   designSystem: {
     tokens: ["design-system", "tokens"] as const,
   },
-};
+  code: {
+    generate: ["code", "generate"] as const,
+  },
+} as const;

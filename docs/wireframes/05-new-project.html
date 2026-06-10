@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05 — New Project Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .topbar h1 { font-size: 1.5rem; }
+    .btn-primary { background: #6366f1; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
+    .btn-secondary { background: #fff; color: #333; border: 1px solid #e5e5e5; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
+    .form-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 2rem; max-width: 700px; margin: 0 auto; }
+    .form-section { margin-bottom: 1.5rem; }
+    .form-section-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #f0f0f0; }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.375rem; }
+    .form-hint { font-size: 0.6875rem; color: #999; margin-top: 0.25rem; }
+    .form-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 0.8125rem; font-family: inherit; }
+    .form-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+    textarea.form-input { min-height: 120px; resize: vertical; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-select { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 0.8125rem; font-family: inherit; background: #fff; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .checkbox-item { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; }
+    .checkbox-item input { width: 14px; height: 14px; }
+    .form-footer { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #f0f0f0; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+
+    /* Overlay for modal context */
+    .overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: -1; }
+  </style>
+</head>
+<body>
+
+  <div class="overlay"></div>
+
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item">📊 Dashboard</div>
+    <div class="nav-item active">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item">📋 Task Board</div>
+    <div class="nav-item">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item">⚙ Settings</div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <h1>New Project</h1>
+    </div>
+
+    <div class="form-card">
+      <!-- Step Indicator -->
+      <div style="display: flex; gap: 0; margin-bottom: 2rem;">
+        <div style="flex: 1; text-align: center; padding: 0.5rem; font-size: 0.75rem; background: #6366f1; color: #fff; border-radius: 6px 0 0 6px;">1. Describe</div>
+        <div style="flex: 1; text-align: center; padding: 0.5rem; font-size: 0.75rem; background: #e5e5e5; color: #888;">2. Configure</div>
+        <div style="flex: 1; text-align: center; padding: 0.5rem; font-size: 0.75rem; background: #e5e5e5; color: #888; border-radius: 0 6px 6px 0;">3. Review</div>
+      </div>
+
+      <!-- Basic Info -->
+      <div class="form-section">
+        <div class="form-section-title">Project Details</div>
+        <div class="form-group">
+          <label class="form-label">Project Name *</label>
+          <input type="text" class="form-input" placeholder="e.g. User Authentication Service">
+          <div class="form-hint">A clear, descriptive name for your project</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description *</label>
+          <textarea class="form-input" placeholder="Describe what you want to build. Be as detailed as possible — the PM Agent uses this to decompose requirements into tasks.
+
+Example: Build a user authentication system with JWT tokens, role-based access control, login/register endpoints, password reset flow, and session management."></textarea>
+          <div class="form-hint">The more detail you provide, the better the PM Agent can decompose requirements</div>
+        </div>
+      </div>
+
+      <!-- Configuration -->
+      <div class="form-section">
+        <div class="form-section-title">Configuration</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tech Stack</label>
+            <select class="form-select">
+              <option>Next.js + Tailwind CSS</option>
+              <option>React + Vite</option>
+              <option>FastAPI + React</option>
+              <option>Django + React</option>
+              <option>Express + React</option>
+              <option>Custom (describe in requirements)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Deployment Target</label>
+            <select class="form-select">
+              <option>AWS</option>
+              <option>GCP</option>
+              <option>Azure</option>
+              <option>Vercel</option>
+              <option>Railway</option>
+              <option>Docker (self-hosted)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Priority</label>
+            <select class="form-select">
+              <option>Normal</option>
+              <option>High</option>
+              <option>Low</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Budget Limit</label>
+            <input type="text" class="form-input" placeholder="$50.00">
+            <div class="form-hint">Maximum token spend for the project</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Selection -->
+      <div class="form-section">
+        <div class="form-section-title">Agents</div>
+        <div class="form-hint" style="margin-bottom: 0.75rem;">All agents are enabled by default. Deselect any you don't need.</div>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox" checked> PM Agent</label>
+          <label class="checkbox-item"><input type="checkbox" checked> Architect Agent</label>
+          <label class="checkbox-item"><input type="checkbox" checked> Developer Agent</label>
+          <label class="checkbox-item"><input type="checkbox" checked> Review Agent</label>
+          <label class="checkbox-item"><input type="checkbox" checked> QA Agent</label>
+          <label class="checkbox-item"><input type="checkbox" checked> DevOps Agent</label>
+        </div>
+      </div>
+
+      <!-- Integrations -->
+      <div class="form-section">
+        <div class="form-section-title">Integrations</div>
+        <div class="checkbox-group">
+          <label class="checkbox-item"><input type="checkbox" checked> GitHub Repository</label>
+          <label class="checkbox-item"><input type="checkbox"> Slack Notifications</label>
+          <label class="checkbox-item"><input type="checkbox"> Webhook</label>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="form-footer">
+        <button class="btn-secondary">Cancel</button>
+        <button class="btn-primary">Next: Configure →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — New Project • /projects/new</div>
+</body>
+</html>

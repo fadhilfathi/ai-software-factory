@@ -18,7 +18,7 @@ export function useDebouncedSearch(debounceMs = 300) {
       const t = setTimeout(() => setDebounced(value), debounceMs);
       setTimer(t);
     },
-    [debounceMs, timer],
+    [debounceMs],
   );
 
   return { raw, debounced, onChange };

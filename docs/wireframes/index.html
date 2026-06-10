@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframes — AI Software Factory</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #666; margin-bottom: 2rem; font-size: 0.875rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+    .card { background: white; border: 2px solid #ccc; border-radius: 4px; padding: 1.5rem; text-decoration: none; color: #333; transition: border-color 0.15s; }
+    .card:hover { border-color: #6366f1; }
+    .card h2 { font-size: 1rem; margin-bottom: 0.25rem; }
+    .card p { font-size: 0.75rem; color: #666; margin-bottom: 1rem; }
+    .card .preview { background: #fafafa; border: 1px dashed #ccc; padding: 1rem; font-size: 0.625rem; line-height: 1.4; white-space: pre; overflow: hidden; max-height: 120px; }
+    .tag { display: inline-block; background: #e0e7ff; color: #4338ca; font-size: 0.625rem; padding: 2px 6px; border-radius: 2px; margin-right: 4px; }
+    .meta { font-size: 0.625rem; color: #999; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>AI Software Factory — Wireframes</h1>
+  <p class="subtitle">Low-fidelity mockups for all main screens. Each wireframe shows layout structure, content hierarchy, and component placement.</p>
+
+  <div class="grid">
+    <a href="01-dashboard.html" class="card">
+      <h2>01 — Dashboard</h2>
+      <p>Main overview: project metrics, active agents, recent activity</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ AI Factory            [+ New Project]  │
+├──────┬──────────────────────────────────┤
+│ Nav  │  Dashboard                       │
+│      │  ┌──────┐ ┌──────┐ ┌──────┐     │
+│ Dash │  │ 12   │ │  3   │ │ 89%  │     │
+│ Proj │  │Active│ │Done  │ │Rate  │     │
+│ Agent│  └──────┘ └──────┘ └──────┘     │
+│ Tasks│  ┌────────────────────────────┐  │
+│ Set  │  │ Agent Activity Feed        │  │
+│      │  │ ● Dev: writing auth.ts     │  │
+│      │  │ ● QA: running tests        │  │
+└──────┴──┴────────────────────────────┴──┘</div>
+      <span class="tag">layout</span>
+      <span class="tag">metrics</span>
+      <span class="meta">Route: /dashboard</span>
+    </a>
+
+    <a href="02-projects-list.html" class="card">
+      <h2>02 — Projects List</h2>
+      <p>Grid of all projects with status, progress, and agent counts</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ Projects                 [Filter ▾]    │
+├─────────────────────────────────────────┤
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐│
+│ │ Auth Svc │ │ Payment  │ │ Dashboard││
+│ │ ██████░░ │ │ ██░░░░░░ │ │ ████████ ││
+│ │ 68% done │ │ 22% done │ │ 100% done││
+│ └──────────┘ └──────────┘ └──────────┘│
+│ ┌──────────┐ ┌──────────┐              │
+│ │ API GW   │ │ ML Pipeline             │
+│ │ ████░░░░ │ │ ░░░░░░░░ │              │
+│ │ 45% done │ │ 0% new   │              │
+│ └──────────┘ └──────────┘              │
+└─────────────────────────────────────────┘</div>
+      <span class="tag">grid</span>
+      <span class="tag">cards</span>
+      <span class="meta">Route: /projects</span>
+    </a>
+
+    <a href="03-project-detail.html" class="card">
+      <h2>03 — Project Detail</h2>
+      <p>Single project: workflow pipeline, tasks, agent activity timeline</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ ← Auth Service              [Settings] │
+├─────────────────────────────────────────┤
+│ Request→Plan→Code→Review→Test→Deploy   │
+│  ✓      ✓    ██   ░      ░    ░       │
+├─────────────────────────────────────────┤
+│ Tasks (12)          │ Agent Activity   │
+│ ■ Implement JWT     │ ● Dev: auth.ts   │
+│ ■ Design login API  │ ● Review: scan   │
+│ ○ Write tests       │ ● QA: queued     │
+│ ○ Deploy staging    │                  │
+└─────────────────────┴──────────────────┘</div>
+      <span class="tag">workflow</span>
+      <span class="tag">timeline</span>
+      <span class="meta">Route: /projects/[id]</span>
+    </a>
+
+    <a href="04-task-board.html" class="card">
+      <h2>04 — Task Board</h2>
+      <p>Kanban-style board: columns for each workflow stage</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ Task Board           [All Projects ▾]  │
+├──────────┬──────────┬──────────┬───────┤
+│ TODO     │ IN PROG  │ REVIEW   │ DONE  │
+│ ┌──────┐ │ ┌──────┐ │ ┌──────┐ │┌────┐│
+│ │Design│ │ │Code  │ │ │PR #42│ ││API ││
+│ │login │ │ │auth  │ │ │LGTM  │ ││shc ││
+│ └──────┘ │ └──────┘ │ └──────┘ │└────┘│
+│ ┌──────┐ │          │          │┌────┐│
+│ │Write │ │          │          ││JWT ││
+│ │tests │ │          │          ││tok ││
+│ └──────┘ │          │          │└────┘│
+└──────────┴──────────┴──────────┴───────┘</div>
+      <span class="tag">kanban</span>
+      <span class="tag">drag-drop</span>
+      <span class="meta">Route: /tasks</span>
+    </a>
+
+    <a href="05-new-project.html" class="card">
+      <h2>05 — New Project</h2>
+      <p>Request intake form: describe project, select options, submit</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ New Project                          ✕  │
+├─────────────────────────────────────────┤
+│ Project Name                            │
+│ ┌─────────────────────────────────────┐ │
+│ │                                     │ │
+│ └─────────────────────────────────────┘ │
+│ Description                             │
+│ ┌─────────────────────────────────────┐ │
+│ │ Build a user authentication system  │ │
+│ │ with JWT tokens and role-based      │ │
+│ │ access control...                   │ │
+│ └─────────────────────────────────────┘ │
+│ Stack: [Next.js ▾]  Env: [AWS ▾]      │
+│                                         │
+│              [Cancel]  [Create Project] │
+└─────────────────────────────────────────┘</div>
+      <span class="tag">form</span>
+      <span class="tag">modal</span>
+      <span class="meta">Route: /projects/new (modal)</span>
+    </a>
+
+    <a href="06-agent-performance.html" class="card">
+      <h2>06 — Agent Performance</h2>
+      <p>Per-agent metrics: utilization, task history, cost tracking</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ Agent Performance                       │
+├─────────────────────────────────────────┤
+│ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐    │
+│ │ PM │ │Arc │ │Dev │ │Rev │ │ QA │    │
+│ │ ◉  │ │ ◉  │ │ ◉◉◉│ │ ◉  │ │ ◉  │    │
+│ └────┘ └────┘ └────┘ └────┘ └────┘    │
+│                                         │
+│ Developer Agent                         │
+│ Tasks: 24  Avg: 12m  Cost: $3.42       │
+│ ████████████████░░░░ 80% utilization    │
+│                                         │
+│ Recent Tasks:                           │
+│ ● auth.ts — 8m — $0.42                 │
+│ ● user.ts — 15m — $0.68                │
+└─────────────────────────────────────────┘</div>
+      <span class="tag">metrics</span>
+      <span class="tag">charts</span>
+      <span class="meta">Route: /agents</span>
+    </a>
+
+    <a href="07-settings.html" class="card">
+      <h2>07 — Settings</h2>
+      <p>Platform configuration: integrations, API keys, preferences</p>
+      <div class="preview">┌─────────────────────────────────────────┐
+│ Settings                                │
+├──────┬──────────────────────────────────┤
+│ Gen  │ General                          │
+│ Int  │ ┌──────────────────────────────┐ │
+│ Noti │ │ Platform Name                │ │
+│ Bill │ │ [AI Software Factory      ]  │ │
+│ Sec  │ │                              │ │
+│      │ │ Default Stack                │ │
+│      │ │ [Next.js + Tailwind ▾]      │ │
+│      │ └──────────────────────────────┘ │
+│      │                                  │
+│      │ Integrations                     │
+│      │ GitHub: ✓ Connected              │
+│      │ AWS:    ✓ Connected              │
+│      │ Slack:  ✗ Not connected          │
+└──────┴──────────────────────────────────┘</div>
+      <span class="tag">config</span>
+      <span class="tag">integrations</span>
+      <span class="meta">Route: /settings</span>
+    </a>
+
+    <a href="08-mobile-dashboard.html" class="card">
+      <h2>08 — Mobile Dashboard</h2>
+      <p>Responsive mobile view: collapsed sidebar, stacked layout</p>
+      <div class="preview">┌───────────────────┐
+│ ☰  AI Factory     │
+├───────────────────┤
+│ ┌─────┐ ┌─────┐  │
+│ │ 12  │ │  3  │  │
+│ │Active│ │Done │  │
+│ └─────┘ └─────┘  │
+│ ┌───────────────┐ │
+│ │ 89%           │ │
+│ │ ████████░░    │ │
+│ └───────────────┘ │
+│                   │
+│ Recent Activity   │
+│ ● Dev: auth.ts    │
+│ ● QA: tests       │
+│ ● Rev: PR #42     │
+│                   │
+│ ─── ── ── ── ──  │
+│ 🏠  📁  🤖  ⚙   │
+└───────────────────┘</div>
+      <span class="tag">mobile</span>
+      <span class="tag">responsive</span>
+      <span class="meta">Route: /dashboard (mobile)</span>
+    </a>
+  </div>
+
+  <div class="meta" style="margin-top: 2rem; font-size: 0.75rem;">
+    <p>AI Software Factory — Wireframes v1.0</p>
+    <p>Created: 2026-06-10 | 8 screens | Low-fidelity, structural</p>
+    <p>Design system reference: docs/design-system.md</p>
+  </div>
+</body>
+</html>

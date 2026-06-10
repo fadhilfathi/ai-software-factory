@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03 — Project Detail Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .breadcrumb { font-size: 0.75rem; color: #999; margin-bottom: 1rem; }
+    .breadcrumb a { color: #6366f1; text-decoration: none; }
+    .project-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .project-header h1 { font-size: 1.5rem; }
+    .badge { font-size: 0.625rem; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .badge.active { background: #dbeafe; color: #1e3a5f; }
+
+    /* Pipeline */
+    .pipeline { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .pipeline-steps { display: flex; align-items: center; gap: 0; }
+    .pipeline-step { flex: 1; text-align: center; position: relative; }
+    .pipeline-step .circle { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #e5e5e5; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5rem; font-size: 0.75rem; background: #fff; }
+    .pipeline-step.done .circle { background: #22c55e; color: #fff; border-color: #22c55e; }
+    .pipeline-step.active .circle { background: #6366f1; color: #fff; border-color: #6366f1; animation: pulse 2s infinite; }
+    .pipeline-step.pending .circle { background: #f5f5f5; color: #ccc; }
+    .pipeline-step .step-label { font-size: 0.6875rem; color: #888; }
+    .pipeline-step.active .step-label { color: #6366f1; font-weight: 600; }
+    .pipeline-step.done .step-label { color: #22c55e; }
+    .pipeline-line { flex: 0.5; height: 2px; background: #e5e5e5; margin-top: -1rem; }
+    .pipeline-line.done { background: #22c55e; }
+    .pipeline-line.active { background: linear-gradient(to right, #22c55e, #6366f1); }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); } 50% { box-shadow: 0 0 0 8px rgba(99,102,241,0); } }
+
+    /* Two column */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.25rem; }
+    .card h3 { font-size: 0.875rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .task-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.8125rem; }
+    .task-item:last-child { border-bottom: none; }
+    .task-checkbox { width: 14px; height: 14px; border: 1px solid #ccc; border-radius: 3px; flex-shrink: 0; }
+    .task-checkbox.done { background: #22c55e; border-color: #22c55e; }
+    .task-name { flex: 1; }
+    .task-agent { font-size: 0.6875rem; color: #888; }
+    .task-status { font-size: 0.625rem; padding: 1px 6px; border-radius: 8px; }
+    .task-status.done { background: #dcfce7; color: #166534; }
+    .task-status.active { background: #dbeafe; color: #1e3a5f; }
+    .task-status.pending { background: #f5f5f5; color: #999; }
+
+    .activity-item { display: flex; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid #f0f0f0; }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; color: #fff; flex-shrink: 0; }
+    .activity-text { font-size: 0.8125rem; }
+    .activity-time { font-size: 0.6875rem; color: #999; }
+    .count-badge { background: #f0f0f0; padding: 1px 8px; border-radius: 10px; font-size: 0.6875rem; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item">📊 Dashboard</div>
+    <div class="nav-item active">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item">📋 Task Board</div>
+    <div class="nav-item">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item">⚙ Settings</div>
+  </nav>
+
+  <div class="main">
+    <div class="breadcrumb"><a href="#">Projects</a> / Auth Service</div>
+
+    <div class="project-header">
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <h1>Auth Service</h1>
+        <span class="badge active">Active</span>
+      </div>
+      <div style="font-size: 0.75rem; color: #888;">Created Jun 8, 2026 • $12.40 spent</div>
+    </div>
+
+    <!-- Workflow Pipeline -->
+    <div class="pipeline">
+      <h3 style="font-size: 0.875rem; margin-bottom: 1rem;">Workflow Pipeline</h3>
+      <div class="pipeline-steps">
+        <div class="pipeline-step done">
+          <div class="circle">✓</div>
+          <div class="step-label">Request</div>
+        </div>
+        <div class="pipeline-line done"></div>
+        <div class="pipeline-step done">
+          <div class="circle">✓</div>
+          <div class="step-label">Analysis</div>
+        </div>
+        <div class="pipeline-line done"></div>
+        <div class="pipeline-step done">
+          <div class="circle">✓</div>
+          <div class="step-label">Planning</div>
+        </div>
+        <div class="pipeline-line active"></div>
+        <div class="pipeline-step active">
+          <div class="circle">3</div>
+          <div class="step-label">Implementation</div>
+        </div>
+        <div class="pipeline-line"></div>
+        <div class="pipeline-step pending">
+          <div class="circle">—</div>
+          <div class="step-label">Review</div>
+        </div>
+        <div class="pipeline-line"></div>
+        <div class="pipeline-step pending">
+          <div class="circle">—</div>
+          <div class="step-label">Testing</div>
+        </div>
+        <div class="pipeline-line"></div>
+        <div class="pipeline-step pending">
+          <div class="circle">—</div>
+          <div class="step-label">Deploy</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasks + Activity -->
+    <div class="two-col">
+      <!-- Tasks -->
+      <div class="card">
+        <h3>Tasks <span class="count-badge">8/12</span></h3>
+        <div class="task-item">
+          <div class="task-checkbox done"></div>
+          <div class="task-name">Design registration API</div>
+          <div class="task-agent">Architect</div>
+          <span class="task-status done">Done</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox done"></div>
+          <div class="task-name">Implement registration endpoint</div>
+          <div class="task-agent">Developer</div>
+          <span class="task-status done">Done</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox done"></div>
+          <div class="task-name">Design login API</div>
+          <div class="task-agent">Architect</div>
+          <span class="task-status done">Done</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox"></div>
+          <div class="task-name">Implement login endpoint</div>
+          <div class="task-agent">Developer</div>
+          <span class="task-status active">In Progress</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox"></div>
+          <div class="task-name">Implement token refresh</div>
+          <div class="task-agent">Developer</div>
+          <span class="task-status active">In Progress</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox"></div>
+          <div class="task-name">Write registration tests</div>
+          <div class="task-agent">QA</div>
+          <span class="task-status pending">Pending</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox"></div>
+          <div class="task-name">Code review</div>
+          <div class="task-agent">Review</div>
+          <span class="task-status pending">Pending</span>
+        </div>
+        <div class="task-item">
+          <div class="task-checkbox"></div>
+          <div class="task-name">Deploy to staging</div>
+          <div class="task-agent">DevOps</div>
+          <span class="task-status pending">Pending</span>
+        </div>
+      </div>
+
+      <!-- Agent Activity Timeline -->
+      <div class="card">
+        <h3>Agent Activity</h3>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #10b981">DEV</div>
+          <div>
+            <div class="activity-text">Writing <strong>login.ts</strong> — JWT validation with refresh token rotation</div>
+            <div class="activity-time">3 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #10b981">DEV</div>
+          <div>
+            <div class="activity-text">Completed <strong>register.ts</strong> — endpoint with password hashing</div>
+            <div class="activity-time">18 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #f97316">REV</div>
+          <div>
+            <div class="activity-text">Approved <strong>register.ts</strong> — no issues found</div>
+            <div class="activity-time">25 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #0ea5e9">ARC</div>
+          <div>
+            <div class="activity-text">Defined login API contract — <strong>POST /api/auth/login</strong></div>
+            <div class="activity-time">42 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #8b5cf6">PM</div>
+          <div>
+            <div class="task-text">Created 12 tasks from project requirements</div>
+            <div class="activity-time">1 hr ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-avatar" style="background: #0ea5e9">ARC</div>
+          <div>
+            <div class="activity-text">System architecture approved — Next.js + PostgreSQL + Redis</div>
+            <div class="activity-time">1.5 hr ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quality Gates -->
+    <div style="margin-top: 1.5rem;">
+      <div class="card">
+        <h3>Quality Gates</h3>
+        <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem;">
+          <div style="flex: 1; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; border-left: 3px solid #22c55e;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #22c55e;">✓ Gate 1: Code Review</div>
+            <div style="font-size: 0.6875rem; color: #888; margin-top: 0.25rem;">Passed — 1/1 tasks approved</div>
+          </div>
+          <div style="flex: 1; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; border-left: 3px solid #6366f1;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #6366f1;">◉ Gate 2: Testing</div>
+            <div style="font-size: 0.6875rem; color: #888; margin-top: 0.25rem;">Waiting for implementation</div>
+          </div>
+          <div style="flex: 1; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; border-left: 3px solid #ccc;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #ccc;">○ Gate 3: Deployment</div>
+            <div style="font-size: 0.6875rem; color: #888; margin-top: 0.25rem;">Not started</div>
+          </div>
+          <div style="flex: 1; padding: 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; border-left: 3px solid #ccc;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #ccc;">○ Gate 4: Production</div>
+            <div style="font-size: 0.6875rem; color: #888; margin-top: 0.25rem;">Requires human approval</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Project Detail • /projects/[id]</div>
+</body>
+</html>

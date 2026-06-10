@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>07 — Settings Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .topbar { margin-bottom: 2rem; }
+    .topbar h1 { font-size: 1.5rem; }
+
+    .settings-layout { display: grid; grid-template-columns: 200px 1fr; gap: 2rem; }
+    .settings-nav { }
+    .settings-nav-item { padding: 0.5rem 0.75rem; font-size: 0.8125rem; cursor: pointer; border-radius: 6px; margin-bottom: 0.25rem; }
+    .settings-nav-item.active { background: #6366f1; color: #fff; }
+    .settings-nav-item:hover { background: #e5e5e5; }
+    .settings-nav-item.active:hover { background: #6366f1; }
+
+    .settings-panel { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 2rem; }
+    .settings-section { margin-bottom: 2rem; }
+    .settings-section:last-child { margin-bottom: 0; }
+    .settings-section-title { font-size: 0.9375rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .settings-section-desc { font-size: 0.75rem; color: #888; margin-bottom: 1.25rem; }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.375rem; }
+    .form-input { width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 0.8125rem; font-family: inherit; }
+    .form-input:focus { outline: none; border-color: #6366f1; }
+    .form-hint { font-size: 0.6875rem; color: #999; margin-top: 0.25rem; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 500px; }
+    .form-select { width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 0.8125rem; font-family: inherit; background: #fff; }
+    .divider { height: 1px; background: #f0f0f0; margin: 2rem 0; }
+
+    /* Integration Cards */
+    .integration-card { display: flex; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid #e5e5e5; border-radius: 8px; margin-bottom: 0.75rem; }
+    .integration-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
+    .integration-info { flex: 1; }
+    .integration-name { font-size: 0.875rem; font-weight: 500; }
+    .integration-desc { font-size: 0.75rem; color: #888; }
+    .integration-status { font-size: 0.6875rem; padding: 2px 8px; border-radius: 10px; }
+    .integration-status.connected { background: #dcfce7; color: #166534; }
+    .integration-status.disconnected { background: #f5f5f5; color: #888; }
+    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer; font-family: inherit; border: 1px solid #e5e5e5; background: #fff; }
+    .btn-sm.primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+    /* Notification toggles */
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f0f0f0; }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 0.8125rem; }
+    .toggle-desc { font-size: 0.6875rem; color: #888; }
+    .toggle { width: 36px; height: 20px; background: #ccc; border-radius: 10px; position: relative; cursor: pointer; flex-shrink: 0; }
+    .toggle.on { background: #6366f1; }
+    .toggle::after { content: ''; width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.15s; }
+    .toggle.on::after { transform: translateX(16px); }
+
+    .btn-primary { background: #6366f1; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item">📊 Dashboard</div>
+    <div class="nav-item">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item">📋 Task Board</div>
+    <div class="nav-item">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item active">⚙ Settings</div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <h1>Settings</h1>
+    </div>
+
+    <div class="settings-layout">
+      <!-- Settings Nav -->
+      <div class="settings-nav">
+        <div class="settings-nav-item active">General</div>
+        <div class="settings-nav-item">Integrations</div>
+        <div class="settings-nav-item">Notifications</div>
+        <div class="settings-nav-item">Billing</div>
+        <div class="settings-nav-item">Security</div>
+      </div>
+
+      <!-- Settings Content -->
+      <div class="settings-panel">
+        <!-- General Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">General</div>
+          <div class="settings-section-desc">Basic platform configuration</div>
+          <div class="form-group">
+            <label class="form-label">Platform Name</label>
+            <input type="text" class="form-input" value="AI Software Factory">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Default Tech Stack</label>
+            <select class="form-select">
+              <option selected>Next.js + Tailwind CSS</option>
+              <option>React + Vite</option>
+              <option>FastAPI + React</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Default Deployment Target</label>
+            <select class="form-select">
+              <option selected>AWS</option>
+              <option>GCP</option>
+              <option>Azure</option>
+              <option>Vercel</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Default Budget Limit</label>
+            <input type="text" class="form-input" value="$50.00">
+            <div class="form-hint">Maximum token spend per project unless overridden</div>
+          </div>
+          <button class="btn-primary">Save Changes</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Integrations Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">Integrations</div>
+          <div class="settings-section-desc">Connect external services for agent workflows</div>
+
+          <div class="integration-card">
+            <div class="integration-icon" style="background: #f0f0f0;">🐙</div>
+            <div class="integration-info">
+              <div class="integration-name">GitHub</div>
+              <div class="integration-desc">Repository management, PR workflows, code review</div>
+            </div>
+            <span class="integration-status connected">✓ Connected</span>
+          </div>
+
+          <div class="integration-card">
+            <div class="integration-icon" style="background: #fef3c7;">☁️</div>
+            <div class="integration-info">
+              <div class="integration-name">AWS</div>
+              <div class="integration-desc">Deployment targets, IAM, S3, Lambda</div>
+            </div>
+            <span class="integration-status connected">✓ Connected</span>
+          </div>
+
+          <div class="integration-card">
+            <div class="integration-icon" style="background: #f0f0f0;">💬</div>
+            <div class="integration-info">
+              <div class="integration-name">Slack</div>
+              <div class="integration-desc">Project notifications, deployment alerts</div>
+            </div>
+            <button class="btn-sm primary">Connect</button>
+          </div>
+
+          <div class="integration-card">
+            <div class="integration-icon" style="background: #f0f0f0;">🔗</div>
+            <div class="integration-info">
+              <div class="integration-name">Webhook</div>
+              <div class="integration-desc">Custom HTTP endpoints for events</div>
+            </div>
+            <button class="btn-sm">Configure</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Notifications Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">Notifications</div>
+          <div class="settings-section-desc">Configure when and how you receive alerts</div>
+
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Project Completed</div>
+              <div class="toggle-desc">When a project reaches deployed status</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Quality Gate Failed</div>
+              <div class="toggle-desc">When a review or test gate fails</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Agent Error</div>
+              <div class="toggle-desc">When an agent fails and needs retry</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Budget Alert</div>
+              <div class="toggle-desc">When token spend exceeds 80% of budget</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Daily Summary</div>
+              <div class="toggle-desc">End-of-day project progress digest</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Security Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">API Keys</div>
+          <div class="settings-section-desc">Manage access tokens for agent services</div>
+          <div class="form-group">
+            <label class="form-label">OpenAI API Key</label>
+            <input type="password" class="form-input" value="sk-••••••••••••••••••••••••">
+            <div class="form-hint">Used by Developer and Review agents</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Anthropic API Key</label>
+            <input type="password" class="form-input" value="sk-ant-••••••••••••••••">
+            <div class="form-hint">Used by PM and Architect agents</div>
+          </div>
+          <button class="btn-primary">Update Keys</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Settings • /settings</div>
+</body>
+</html>

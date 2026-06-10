@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04 — Task Board Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .topbar h1 { font-size: 1.5rem; }
+    .filter-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .filter-select { background: #fff; border: 1px solid #e5e5e5; padding: 0.375rem 0.75rem; border-radius: 6px; font-size: 0.75rem; font-family: inherit; }
+    .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; align-items: flex-start; }
+    .column { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1rem; min-height: 400px; }
+    .column-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e5e5e5; }
+    .column-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .column-count { background: #e5e5e5; padding: 1px 8px; border-radius: 10px; font-size: 0.6875rem; }
+    .column.todo .column-title { color: #888; }
+    .column.inprog .column-title { color: #6366f1; }
+    .column.review .column-title { color: #f97316; }
+    .column.done .column-title { color: #22c55e; }
+    .task-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0.875rem; margin-bottom: 0.75rem; cursor: pointer; transition: box-shadow 0.15s; }
+    .task-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .task-title { font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.5rem; }
+    .task-meta { display: flex; justify-content: space-between; align-items: center; }
+    .task-agent { display: flex; align-items: center; gap: 0.375rem; font-size: 0.6875rem; color: #888; }
+    .agent-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .task-priority { font-size: 0.5625rem; padding: 1px 5px; border-radius: 4px; }
+    .task-priority.high { background: #fee2e2; color: #991b1b; }
+    .task-priority.med { background: #fef3c7; color: #92400e; }
+    .task-priority.low { background: #f5f5f5; color: #888; }
+    .task-project { font-size: 0.625rem; color: #999; margin-top: 0.375rem; }
+    .task-id { font-size: 0.625rem; color: #bbb; font-family: monospace; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item">📊 Dashboard</div>
+    <div class="nav-item">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item active">📋 Task Board</div>
+    <div class="nav-item">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item">⚙ Settings</div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <h1>Task Board</h1>
+    </div>
+
+    <div class="filter-row">
+      <select class="filter-select">
+        <option>All Projects</option>
+        <option>Auth Service</option>
+        <option>Payment API</option>
+        <option>Dashboard v2</option>
+      </select>
+      <select class="filter-select">
+        <option>All Agents</option>
+        <option>PM Agent</option>
+        <option>Architect Agent</option>
+        <option>Developer Agent</option>
+        <option>Review Agent</option>
+        <option>QA Agent</option>
+        <option>DevOps Agent</option>
+      </select>
+      <select class="filter-select">
+        <option>All Priorities</option>
+        <option>High</option>
+        <option>Medium</option>
+        <option>Low</option>
+      </select>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="board">
+      <!-- TODO Column -->
+      <div class="column todo">
+        <div class="column-header">
+          <span class="column-title">TODO</span>
+          <span class="column-count">4</span>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Design token refresh flow</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #0ea5e9"></div> Architect</div>
+            <span class="task-priority med">MED</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_007</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Write login tests</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #ec4899"></div> QA</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_008</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Design payment webhook API</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #0ea5e9"></div> Architect</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Payment API</div>
+          <div class="task-id">task_014</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Set up rate limiting middleware</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #10b981"></div> Developer</div>
+            <span class="task-priority low">LOW</span>
+          </div>
+          <div class="task-project">API Gateway</div>
+          <div class="task-id">task_021</div>
+        </div>
+      </div>
+
+      <!-- IN PROGRESS Column -->
+      <div class="column inprog">
+        <div class="column-header">
+          <span class="column-title">IN PROGRESS</span>
+          <span class="column-count">3</span>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Implement login endpoint</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #10b981"></div> Developer</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_004</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Implement token refresh</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #10b981"></div> Developer</div>
+            <span class="task-priority med">MED</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_005</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Implement Stripe integration</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #10b981"></div> Developer</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Payment API</div>
+          <div class="task-id">task_015</div>
+        </div>
+      </div>
+
+      <!-- REVIEW Column -->
+      <div class="column review">
+        <div class="column-header">
+          <span class="column-title">REVIEW</span>
+          <span class="column-count">2</span>
+        </div>
+        <div class="task-card">
+          <div class="task-title">PR #42: Register endpoint</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #f97316"></div> Review</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_006</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">PR #43: API key validation</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #f97316"></div> Review</div>
+            <span class="task-priority med">MED</span>
+          </div>
+          <div class="task-project">API Gateway</div>
+          <div class="task-id">task_022</div>
+        </div>
+      </div>
+
+      <!-- DONE Column -->
+      <div class="column done">
+        <div class="column-header">
+          <span class="column-title">DONE</span>
+          <span class="column-count">5</span>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Design registration API</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #0ea5e9"></div> Architect</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_001</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Implement registration endpoint</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #10b981"></div> Developer</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_002</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Design login API</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #0ea5e9"></div> Architect</div>
+            <span class="task-priority high">HIGH</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_003</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Write registration tests</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #ec4899"></div> QA</div>
+            <span class="task-priority med">MED</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_009</div>
+        </div>
+        <div class="task-card">
+          <div class="task-title">Review registration code</div>
+          <div class="task-meta">
+            <div class="task-agent"><div class="agent-dot" style="background: #f97316"></div> Review</div>
+            <span class="task-priority med">MED</span>
+          </div>
+          <div class="task-project">Auth Service</div>
+          <div class="task-id">task_010</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Task Board • /tasks</div>
+</body>
+</html>

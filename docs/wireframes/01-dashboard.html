@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01 — Dashboard Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .nav-item:hover { background: rgba(255,255,255,0.05); color: #ccc; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .topbar h1 { font-size: 1.5rem; }
+    .btn-primary { background: #6366f1; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .metric-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.25rem; }
+    .metric-card .label { font-size: 0.6875rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    .metric-card .value { font-size: 1.75rem; font-weight: bold; }
+    .metric-card .sub { font-size: 0.6875rem; color: #888; margin-top: 0.25rem; }
+    .metric-card.active .value { color: #6366f1; }
+    .metric-card.done .value { color: #22c55e; }
+    .metric-card.rate .value { color: #f59e0b; }
+    .metric-card.cost .value { color: #ef4444; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.25rem; }
+    .card h3 { font-size: 0.875rem; margin-bottom: 1rem; }
+    .activity-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid #f0f0f0; }
+    .activity-item:last-child { border-bottom: none; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+    .dot.dev { background: #10b981; }
+    .dot.qa { background: #ec4899; }
+    .dot.rev { background: #f97316; }
+    .dot.pm { background: #8b5cf6; }
+    .dot.arc { background: #0ea5e9; }
+    .dot.ops { background: #6366f1; }
+    .activity-text { font-size: 0.8125rem; }
+    .activity-time { font-size: 0.6875rem; color: #999; }
+    .progress-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; }
+    .progress-label { font-size: 0.8125rem; width: 140px; flex-shrink: 0; }
+    .progress-bar { flex: 1; height: 6px; background: #e5e5e5; border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; }
+    .progress-pct { font-size: 0.75rem; color: #888; width: 36px; text-align: right; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+    .progress-fill.green { background: #22c55e; }
+    .progress-fill.blue { background: #6366f1; }
+    .progress-fill.yellow { background: #f59e0b; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active">📊 Dashboard</div>
+    <div class="nav-item">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item">📋 Task Board</div>
+    <div class="nav-item">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item">⚙ Settings</div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <h1>Dashboard</h1>
+      <button class="btn-primary">+ New Project</button>
+    </div>
+
+    <!-- Metrics Row -->
+    <div class="metrics">
+      <div class="metric-card active">
+        <div class="label">Active Projects</div>
+        <div class="value">12</div>
+        <div class="sub">3 need attention</div>
+      </div>
+      <div class="metric-card done">
+        <div class="label">Completed</div>
+        <div class="value">47</div>
+        <div class="sub">+5 this week</div>
+      </div>
+      <div class="metric-card rate">
+        <div class="label">Success Rate</div>
+        <div class="value">89%</div>
+        <div class="sub">↑ 3% from last month</div>
+      </div>
+      <div class="metric-card cost">
+        <div class="label">Total Spend</div>
+        <div class="value">$1,247</div>
+        <div class="sub">$3.20 avg per task</div>
+      </div>
+    </div>
+
+    <!-- Two Column Layout -->
+    <div class="two-col">
+      <!-- Recent Activity -->
+      <div class="card">
+        <h3>Recent Activity</h3>
+        <div class="activity-item">
+          <div class="dot dev"></div>
+          <div>
+            <div class="activity-text">Developer Agent completed <strong>auth.ts</strong></div>
+            <div class="activity-time">Auth Service • 2 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="dot rev"></div>
+          <div>
+            <div class="activity-text">Review Agent approved <strong>PR #42</strong></div>
+            <div class="activity-time">Auth Service • 8 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="dot qa"></div>
+          <div>
+            <div class="activity-text">QA Agent started test suite for <strong>Payment API</strong></div>
+            <div class="activity-time">Payment Service • 12 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="dot pm"></div>
+          <div>
+            <div class="activity-text">PM Agent decomposed requirements for <strong>Dashboard v2</strong></div>
+            <div class="activity-time">Dashboard • 25 min ago</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="dot ops"></div>
+          <div>
+            <div class="activity-text">DevOps Agent deployed <strong>staging</strong> for Auth Service</div>
+            <div class="activity-time">Auth Service • 1 hr ago</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project Progress -->
+      <div class="card">
+        <h3>Project Progress</h3>
+        <div class="progress-row">
+          <div class="progress-label">Auth Service</div>
+          <div class="progress-bar"><div class="progress-fill blue" style="width: 68%"></div></div>
+          <div class="progress-pct">68%</div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label">Payment API</div>
+          <div class="progress-bar"><div class="progress-fill yellow" style="width: 22%"></div></div>
+          <div class="progress-pct">22%</div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label">Dashboard v2</div>
+          <div class="progress-bar"><div class="progress-fill yellow" style="width: 8%"></div></div>
+          <div class="progress-pct">8%</div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label">API Gateway</div>
+          <div class="progress-bar"><div class="progress-fill blue" style="width: 45%"></div></div>
+          <div class="progress-pct">45%</div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label">ML Pipeline</div>
+          <div class="progress-bar"><div class="progress-fill green" style="width: 100%"></div></div>
+          <div class="progress-pct">100%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent Status Row -->
+    <div style="margin-top: 1.5rem;">
+      <div class="card">
+        <h3>Agent Status</h3>
+        <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot pm"></div>
+            <span style="font-size: 0.8125rem;">PM: <strong>Idle</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot arc"></div>
+            <span style="font-size: 0.8125rem;">Architect: <strong>Designing</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot dev"></div>
+            <span style="font-size: 0.8125rem;">Developer: <strong>3 active</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot rev"></div>
+            <span style="font-size: 0.8125rem;">Review: <strong>Reviewing</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot qa"></div>
+            <span style="font-size: 0.8125rem;">QA: <strong>Running tests</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="dot ops"></div>
+            <span style="font-size: 0.8125rem;">DevOps: <strong>Idle</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Dashboard • /dashboard</div>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>06 — Agent Performance Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; }
+    .nav { width: 260px; background: #1a1a2e; color: #aaa; height: 100vh; position: fixed; top: 0; left: 0; padding: 1.5rem 0; }
+    .nav-logo { padding: 0 1.5rem; margin-bottom: 2rem; color: #fff; font-weight: bold; font-size: 1rem; }
+    .nav-section { padding: 0 1.5rem; margin-top: 1.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: #666; }
+    .nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1.5rem; font-size: 0.8125rem; color: #888; cursor: pointer; }
+    .nav-item.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+    .main { margin-left: 260px; padding: 2rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .topbar h1 { font-size: 1.5rem; }
+
+    /* Agent Tabs */
+    .agent-tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 2px solid #e5e5e5; }
+    .agent-tab { padding: 0.75rem 1.25rem; font-size: 0.8125rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; display: flex; align-items: center; gap: 0.5rem; }
+    .agent-tab.active { border-bottom-color: #6366f1; color: #6366f1; font-weight: 600; }
+    .agent-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1rem; }
+    .stat-label { font-size: 0.6875rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1.5rem; font-weight: bold; margin: 0.25rem 0; }
+    .stat-change { font-size: 0.6875rem; }
+    .stat-change.up { color: #22c55e; }
+    .stat-change.down { color: #ef4444; }
+
+    .two-col { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; }
+    .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1.25rem; }
+    .card h3 { font-size: 0.875rem; margin-bottom: 1rem; }
+
+    /* Utilization Bar */
+    .util-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .util-label { font-size: 0.75rem; width: 80px; flex-shrink: 0; }
+    .util-bar { flex: 1; height: 8px; background: #e5e5e5; border-radius: 4px; overflow: hidden; }
+    .util-fill { height: 100%; border-radius: 4px; }
+    .util-pct { font-size: 0.75rem; width: 40px; text-align: right; }
+
+    /* Task History */
+    .task-history-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.8125rem; }
+    .task-history-item:last-child { border-bottom: none; }
+    .task-history-name { flex: 1; }
+    .task-history-duration { font-size: 0.75rem; color: #888; width: 60px; }
+    .task-history-cost { font-size: 0.75rem; color: #888; width: 60px; text-align: right; }
+    .task-history-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Timeline */
+    .timeline-item { display: flex; gap: 0.75rem; padding: 0.5rem 0; border-left: 2px solid #e5e5e5; padding-left: 1rem; margin-left: 0.5rem; font-size: 0.8125rem; }
+    .timeline-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: -1.375rem; flex-shrink: 0; margin-top: 4px; }
+    .timeline-time { font-size: 0.6875rem; color: #999; }
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-logo">⚡ AI Factory</div>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item">📊 Dashboard</div>
+    <div class="nav-item">📁 Projects</div>
+    <div class="nav-section">Work</div>
+    <div class="nav-item">📋 Task Board</div>
+    <div class="nav-item active">🤖 Agents</div>
+    <div class="nav-section">Insights</div>
+    <div class="nav-item">📈 Performance</div>
+    <div class="nav-item">💰 Cost Tracking</div>
+    <div class="nav-section">System</div>
+    <div class="nav-item">⚙ Settings</div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <h1>Agent Performance</h1>
+    </div>
+
+    <!-- Agent Tabs -->
+    <div class="agent-tabs">
+      <div class="agent-tab active">
+        <div class="agent-dot" style="background: #10b981"></div>
+        Developer
+      </div>
+      <div class="agent-tab">
+        <div class="agent-dot" style="background: #8b5cf6"></div>
+        PM
+      </div>
+      <div class="agent-tab">
+        <div class="agent-dot" style="background: #0ea5e9"></div>
+        Architect
+      </div>
+      <div class="agent-tab">
+        <div class="agent-dot" style="background: #f97316"></div>
+        Review
+      </div>
+      <div class="agent-tab">
+        <div class="agent-dot" style="background: #ec4899"></div>
+        QA
+      </div>
+      <div class="agent-tab">
+        <div class="agent-dot" style="background: #6366f1"></div>
+        DevOps
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Tasks Completed</div>
+        <div class="stat-value" style="color: #22c55e;">24</div>
+        <div class="stat-change up">↑ 6 this week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Duration</div>
+        <div class="stat-value">12m</div>
+        <div class="stat-change up">↓ 2m faster</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Success Rate</div>
+        <div class="stat-value">96%</div>
+        <div class="stat-change up">↑ 4% improvement</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Cost</div>
+        <div class="stat-value">$82</div>
+        <div class="stat-change">$3.42 avg per task</div>
+      </div>
+    </div>
+
+    <!-- Two Column: Utilization + History -->
+    <div class="two-col">
+      <div class="card">
+        <h3>Utilization by Project</h3>
+        <div class="util-row">
+          <div class="util-label">Auth Service</div>
+          <div class="util-bar"><div class="util-fill" style="width: 72%; background: #6366f1;"></div></div>
+          <div class="util-pct">72%</div>
+        </div>
+        <div class="util-row">
+          <div class="util-label">Payment API</div>
+          <div class="util-bar"><div class="util-fill" style="width: 45%; background: #0ea5e9;"></div></div>
+          <div class="util-pct">45%</div>
+        </div>
+        <div class="util-row">
+          <div class="util-label">API Gateway</div>
+          <div class="util-bar"><div class="util-fill" style="width: 38%; background: #10b981;"></div></div>
+          <div class="util-pct">38%</div>
+        </div>
+        <div class="util-row">
+          <div class="util-label">ML Pipeline</div>
+          <div class="util-bar"><div class="util-fill" style="width: 15%; background: #f59e0b;"></div></div>
+          <div class="util-pct">15%</div>
+        </div>
+
+        <h3 style="margin-top: 1.5rem;">Recent Tasks</h3>
+        <div class="task-history-item">
+          <div class="task-history-status" style="background: #22c55e;"></div>
+          <div class="task-history-name">auth.ts — JWT validation</div>
+          <div class="task-history-duration">8m</div>
+          <div class="task-history-cost">$0.42</div>
+        </div>
+        <div class="task-history-item">
+          <div class="task-history-status" style="background: #22c55e;"></div>
+          <div class="task-history-name">register.ts — endpoint</div>
+          <div class="task-history-duration">15m</div>
+          <div class="task-history-cost">$0.68</div>
+        </div>
+        <div class="task-history-item">
+          <div class="task-history-status" style="background: #22c55e;"></div>
+          <div class="task-history-name">login.ts — password hash</div>
+          <div class="task-history-duration">6m</div>
+          <div class="task-history-cost">$0.31</div>
+        </div>
+        <div class="task-history-item">
+          <div class="task-history-status" style="background: #ef4444;"></div>
+          <div class="task-history-name">payment.ts — Stripe (retry)</div>
+          <div class="task-history-duration">22m</div>
+          <div class="task-history-cost">$1.12</div>
+        </div>
+        <div class="task-history-item">
+          <div class="task-history-status" style="background: #22c55e;"></div>
+          <div class="task-history-name">gateway.ts — rate limiter</div>
+          <div class="task-history-duration">11m</div>
+          <div class="task-history-cost">$0.54</div>
+        </div>
+      </div>
+
+      <!-- Activity Timeline -->
+      <div class="card">
+        <h3>Activity Timeline</h3>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #22c55e;"></div>
+          <div>
+            <div>Completed auth.ts</div>
+            <div class="timeline-time">3 min ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #6366f1;"></div>
+          <div>
+            <div>Started login.ts</div>
+            <div class="timeline-time">5 min ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #22c55e;"></div>
+          <div>
+            <div>Completed register.ts</div>
+            <div class="timeline-time">18 min ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #f97316;"></div>
+          <div>
+            <div>Code review passed</div>
+            <div class="timeline-time">25 min ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #ef4444;"></div>
+          <div>
+            <div>Payment.ts failed — retrying</div>
+            <div class="timeline-time">45 min ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #22c55e;"></div>
+          <div>
+            <div>Completed login.ts (hash)</div>
+            <div class="timeline-time">1 hr ago</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot" style="background: #8b5cf6;"></div>
+          <div>
+            <div>Task assigned by PM Agent</div>
+            <div class="timeline-time">1.5 hr ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Agent Performance • /agents</div>
+</body>
+</html>

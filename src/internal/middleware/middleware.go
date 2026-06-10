@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/example/project/internal/service"
 )
 
 type contextKey string
@@ -22,9 +24,7 @@ type isPublicPath func(r *http.Request) bool
 
 // Auth provides JWT and API Key authentication.
 // Pass publicRoutes to exempt specific routes (e.g. login, register, healthz).
-// For now it extracts the Authorization header and sets a placeholder user_id.
-// TODO: integrate real JWT validation.
-func Auth(publicPaths isPublicPath) func(http.Handler) http.Handler {
+func Auth(authService *service.AuthService, publicPaths isPublicPath) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if publicPaths(r) {
@@ -41,12 +41,17 @@ func Auth(publicPaths isPublicPath) func(http.Handler) http.Handler {
 			var userID string
 			if strings.HasPrefix(auth, "Bearer ") {
 				token := strings.TrimPrefix(auth, "Bearer ")
-				// Accept API key pattern: ak_...
+				// API key pattern: ak_...
 				if strings.HasPrefix(token, "ak_") {
 					userID = "api_user"
 				} else {
-					// JWT placeholder — extract sub claim.
-					userID = "user_from_jwt"
+					// Validate JWT using AuthService
+					validatedUserID, err := authService.ValidateToken(token)
+					if err != nil {
+						http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"Invalid or expired token"}}`, http.StatusUnauthorized)
+						return
+					}
+					userID = validatedUserID
 				}
 			} else {
 				http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"Invalid authorization scheme"}}`, http.StatusUnauthorized)

@@ -72,6 +72,16 @@ export type Task = {
   updated_at: string;
 };
 
+export type CreateTaskPayload = {
+  project_id: string;
+  title: string;
+  description?: string;
+  type?: string;
+  acceptance_criteria?: string[];
+  priority?: TaskPriority;
+  assignee_agent_id?: string;
+};
+
 export type UpdateTaskPayload = {
   status?: TaskStatus;
   assignee_agent_id?: string;

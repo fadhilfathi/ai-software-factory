@@ -59,7 +59,7 @@ export default function NewProjectPage() {
         template: `${techStack} + ${deployTarget}`,
         agents: selectedAgents.map((a) => a.toLowerCase()),
       });
-      router.push(`/projects/${result.data.id}`);
+      router.push(`/projects/${result.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create project");
     }

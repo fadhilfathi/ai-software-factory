@@ -1,61 +1,66 @@
-# Persona 5: David Rodriguez — QA Engineer
+# Persona 5: QA Engineer — "Samara Okafor"
 
-## Demographics & Background
-- **Name:** David Rodriguez
-- **Role:** Senior QA Engineer / Test Architect
-- **Company:** EduPlatform (EdTech, 25 engineers, 5 QA)
-- **Age:** 33
-- **Location:** Chicago, IL
-- **Education:** BS Software Engineering from University of Illinois
-- **Experience:** 9 years QA, 3 as Test Architect, previously at Salesforce and Coursera
+## Name and Role
+**Samara Okafor**, 35 — Senior QA Engineer / Test Architect (leads quality for 3 product areas, 15 engineers)
 
-## Goals & Motivations
-- Shift quality left — catch bugs in requirements, not production
-- Build test infrastructure that scales with the product
-- Automate the boring stuff; focus on exploratory and edge-case testing
-- Have visibility into what's being built before it reaches QA
-- Reduce the regression cycle from days to minutes
+## Demographics and Background
+- **Location**: Atlanta, GA (hybrid 2 days/week)
+- **Education**: BS Computer Engineering, Georgia Tech; ISTQB Advanced Test Manager; AWS Certified Developer
+- **Career Path**: Manual QA at enterprise software co (3 years) → SDET at fintech startup (4 years, built test framework from scratch) → Senior QA at current Series C (2 years)
+- **Technical Fluency**: Expert in test architecture, automation frameworks (Playwright, Cypress, k6, Postman), CI/CD pipelines, contract testing, chaos engineering; writes TypeScript/Go/Python; reads all codebases
+- **Scope**: Owns "Quality Platform" — shared test infrastructure, standards, tooling; embeds with 3 squads (2 weeks each rotation)
+
+## Goals and Motivations
+| Goal | Motivation |
+|------|------------|
+| Shift quality left: catch bugs at spec, not production | Production bugs cost 100x more; team burns out on hotfixes |
+| Eliminate manual regression testing | 2 days/sprint on manual regression; zero value add |
+| Make testing so easy developers do it by default | "QA bottleneck" narrative; wants shared ownership |
+| Provide real-time quality signal to PM/Tech Lead | Decisions made without quality data; surprises at launch |
+| Build reusable test patterns as platform capabilities | Reinventing test setup per project; 30% waste |
 
 ## Pain Points
-1. **Late involvement** — QA gets features 2 days before release; no time for thorough testing
-2. **Flaky tests** — 30% of CI failures are test infrastructure, not product bugs
-3. **No shared test data** — Every test creates its own data; cleanup is a nightmare
-4. **Manual regression** — Critical paths still tested by hand; doesn't scale
-5. **Communication gaps** — Developers don't know what QA tests; QA doesn't know what changed
+| Pain Point | Impact | Current Workaround |
+|------------|--------|-------------------|
+| Test plans written after code; miss requirements gaps | Bugs found in staging; expensive rework | "Review PRs for testability" — too late |
+| Flaky tests erode trust; 20% false positives | Engineers ignore CI failures; merge anyway | "Quarantine flaky tests" — never fixed |
+| No contract testing between frontend/backend | Integration bugs only in e2e (slow, brittle) | Manual API testing in Postman |
+| Test data management is a nightmare | Tests pollute each other; CI non-deterministic | Snapshots/seed scripts; brittle maintenance |
+| Performance testing only before major releases | Production incidents from gradual degradation | "Load test once a quarter" |
+| QA seen as gatekeeper, not enabler | Adversarial dynamic; devs hide changes | "Shift left" workshops; cultural, not systemic |
 
-## How David Interacts with the Platform
-- Reviews the PM Agent's acceptance criteria for testability before development starts
-- Uses the QA Agent to generate test plans, test cases, and automation scaffolding
-- Defines test strategies and quality gates the platform enforces
-- Monitors the quality dashboard: coverage, flakiness, defect trends, escape rate
-- Collaborates with the Developer Agent to make code more testable
+## How They Interact with the Platform
+- **Primary Interface**: QA workspace (web) + VS Code extension + CLI for test authoring
+- **Frequency**: Daily 3-4 hours authoring/maintaining; continuous monitoring via dashboard
+- **Key Workflows**:
+  1. **Spec-Driven Test Generation**: Reads validated spec in platform → auto-generates: unit test templates, contract tests (Pact), API test scenarios, e2e user journeys, performance benchmarks → Samara reviews, adds edge cases, publishes to shared test library
+  2. **Test Plan as Code**: Writes test plan in platform (markdown + executable annotations) → platform: tracks coverage against spec, generates traceability matrix, alerts on gaps, produces launch readiness report
+  3. **Flake Detection & Healing**: Platform monitors all test runs → detects flakes statistically → auto-bisects to root cause → suggests fix (selector, timing, data) → Samara approves → platform applies across repos
+  4. **Test Data Factory**: Defines data models in platform → generates: type-safe factories, database seeders, API mock servers, anonymized production snapshots → versioned, branch-scoped, ephemeral
+  5. **Continuous Quality Dashboard**: Real-time view per squad: spec coverage, test pass rate, flake rate, performance trends, defect escape rate → PM/Tech Lead subscribe to alerts
+  6. **Production → Test Loop**: Incident in Datadog → platform creates "Regression Test Candidate" → Samara converts to contract/e2e test → adds to paved road → prevents recurrence
+- **Permissions**: Write test plans, manage test infrastructure, configure quality gates, approve/reject deployments to staging/prod
+- **Integrations**: GitHub/GitLab (PR checks, deployment gates), Playwright/Cypress/k6 (execution), Pact (contract), Datadog/New Relic (observability), Linear/Jira (defects), Slack (alerts), TestRail/Xray (legacy migration)
 
-## A Day in the Life
+## Day in the Life
+**7:30 AM** — Opens Quality Dashboard. Squad "Growth" shows: *Spec coverage: 87% (target 90%). Flake rate: 3.2% (up from 1.8%). 2 regression test candidates from last week's incidents.* Clicks "Investigate Flakes."
 
-**8:00 AM** — Reviews overnight test results. The QA Agent ran 2,400 tests across 4 services. 3 flaky tests identified — auto-quarantined. 1 genuine failure in the new grading service.
+**8:00 AM** — Platform flake analysis: *`checkout-flow.test.ts` fails 12% on "Stripe webhook timeout" — root cause: test uses fixed 5s wait, Staging Stripe latency varies.* Platform suggests: "Replace with polling waiter + configurable timeout." Samara approves; platform patches 4 repos using same pattern.
 
-**8:30 AM** — Investigates the failure. The QA Agent generated a minimal reproduction case. David traces it to a timezone edge case in the deadline calculation. Creates a bug ticket; the Developer Agent already has a fix proposed.
+**9:30 AM** — Sprint planning with Growth squad. PM presents "Usage Metrics API" spec. Samara: "Platform shows 3 uncovered acceptance criteria: error rate threshold, pagination edge cases, rate limit headers." Adds to test plan. Platform generates contract tests from OpenAPI spec.
 
-**9:30 AM** — Sprint planning. Reviews upcoming stories for testability. Flags 2 stories with vague acceptance criteria — works with the PM Agent to sharpen them before development starts.
+**11:00 AM** — Authors performance benchmark for new API. Platform: *Generates k6 script from OpenAPI: ramp to 1000 RPS, measures p50/p95/p99, error rate, compares to baseline.* Commits to `performance/` folder; CI runs nightly.
 
-**10:30 AM** — Test infrastructure work. The platform's test data factory needs a new entity: "Course Cohort." David defines the factory; the QA Agent generates builders, fixtures, and cleanup logic.
+**12:30 PM** — Lunch. Checks phone: *Deployment gate for "Billing V2" to staging — Quality check: 94% spec coverage, 0 critical defects, 2 flaky tests (quarantined), performance within baseline.* Taps "Approve."
 
-**12:00 PM** — Lunch. Checks the quality dashboard on phone. Coverage up 2% this sprint. Escape rate (bugs found in prod) down to 0.8%.
+**1:30 PM** — Incident retrospective (SEV-1: billing webhook duplicate charges). Platform created Regression Test Candidate: *"Idempotency key validation missing for Stripe webhook."* Samara converts to contract test: adds to `webhook-contracts` paved road package. Platform backfills to 3 other webhook handlers.
 
-**1:00 PM** — Exploratory testing session on the new "Peer Review" feature. Uses the platform's test session recorder — captures steps, screenshots, network logs. Finds a permissions edge case. The QA Agent converts the session into an automated regression test.
+**3:00 PM** — Reviews Developer agent test output for "Usage Metrics" task. Platform generated: 12 unit, 8 contract, 5 e2e. Samara adds: 3 mutation test survivors (edge cases), 1 chaos test (DB connection pool exhaustion). Approves; platform merges to test library.
 
-**2:30 PM** — Reviews the Developer Agent's generated unit tests for the new notification service. Adds 3 integration tests for the email/SMS/push channels. Suggests a contract test for the provider abstraction.
+**4:30 PM** — Updates "Quality Gates" config for next quarter: *Raise spec coverage target to 95%. Add mutation testing threshold (80%). Require contract test for all new APIs.* Platform validates against current repos: *3 repos would fail — creates remediation tasks.*
 
-**3:30 PM** — Quality gate review for the release candidate. All gates pass: coverage >85%, 0 critical bugs, flakiness <1%, performance within baseline. Approves promotion to production.
+**5:00 PM** — End of day. Platform summary: *2 flakes fixed, 1 regression test added, 1 performance baseline updated, 3 quality gate changes proposed, 1 deployment approved.* Exports weekly quality report for engineering all-hands.
 
-**4:00 PM** — Post-release monitoring. The platform's synthetic tests run every 5 minutes in prod. David watches the dashboard — all green.
+---
 
-**4:30 PM** — Retrospective prep. Exports quality metrics: defect detection rate, mean time to detect, test execution time trends. Data-driven improvement.
-
-## Success Criteria for David
-- QA is involved at story refinement, not pre-release
-- 90% of regression testing is automated and runs in <10 minutes
-- Flaky tests are detected and quarantined automatically
-- Developers get test feedback in their IDE, not days later in CI
-- Quality metrics drive decisions, not gut feel
-- Zero critical escapes to production
+*Persona created for AI Software Factory platform — Sprint 1, TASK-002*

@@ -7,6 +7,7 @@ import (
 	"github.com/example/project/internal/store"
 	"github.com/example/project/internal/validation"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UserService handles user registration and profile operations.
@@ -45,10 +46,17 @@ func (s *UserService) Register(req RegisterRequest) (*model.User, *Error) {
 	}
 
 	now := time.Now().UTC()
+	// Hash password with bcrypt (cost 12)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		s.log.Error("failed to hash password", zap.Error(err))
+		return nil, internalError("Failed to create user")
+	}
+
 	user := &model.User{
 		ID:        generateID("user"),
 		Email:     req.Email,
-		Password:  req.Password, // TODO: hash with bcrypt
+		Password:  string(hashedPassword), // bcrypt hash stored
 		Name:      req.Name,
 		Role:      model.RoleMember,
 		CreatedAt: now,

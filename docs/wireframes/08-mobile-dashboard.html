@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>08 — Mobile Dashboard Wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; background: #f5f5f5; color: #333; display: flex; justify-content: center; padding: 2rem; }
+
+    .phone-frame {
+      width: 375px;
+      min-height: 667px;
+      background: #fff;
+      border: 2px solid #333;
+      border-radius: 24px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+    }
+
+    /* Status Bar */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      background: #1a1a2e;
+      color: #fff;
+    }
+
+    /* Header */
+    .mobile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: #1a1a2e;
+      color: #fff;
+    }
+    .mobile-header h1 { font-size: 1rem; }
+    .hamburger { font-size: 1.25rem; cursor: pointer; }
+    .header-actions { display: flex; gap: 0.75rem; }
+
+    /* Content */
+    .mobile-content { padding: 1rem; }
+
+    /* Metrics */
+    .metrics-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+    .metric-card { background: #f8f8f8; border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.875rem; }
+    .metric-label { font-size: 0.625rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-size: 1.5rem; font-weight: bold; margin: 0.125rem 0; }
+    .metric-sub { font-size: 0.625rem; color: #999; }
+
+    /* Progress */
+    .progress-card { background: #f8f8f8; border: 1px solid #e5e5e5; border-radius: 8px; padding: 0.875rem; margin-bottom: 1rem; }
+    .progress-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+    .progress-title { font-size: 0.75rem; font-weight: 600; }
+    .progress-pct { font-size: 0.75rem; color: #6366f1; font-weight: 600; }
+    .progress-bar { height: 6px; background: #e5e5e5; border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #6366f1; border-radius: 3px; }
+
+    /* Activity */
+    .section-title { font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.75rem; }
+    .activity-item { display: flex; gap: 0.625rem; padding: 0.625rem 0; border-bottom: 1px solid #f0f0f0; }
+    .activity-item:last-child { border-bottom: none; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+    .activity-text { font-size: 0.75rem; flex: 1; }
+    .activity-time { font-size: 0.625rem; color: #999; }
+
+    /* Bottom Nav */
+    .bottom-nav {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0.625rem 0;
+      border-top: 1px solid #e5e5e5;
+      background: #fff;
+    }
+    .nav-item { text-align: center; font-size: 0.5625rem; color: #888; cursor: pointer; }
+    .nav-item.active { color: #6366f1; }
+    .nav-icon { font-size: 1.125rem; display: block; margin-bottom: 2px; }
+
+    .wireframe-note { position: fixed; bottom: 1rem; right: 1rem; background: #333; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.6875rem; }
+  </style>
+</head>
+<body>
+
+  <div class="phone-frame">
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>⚡ 87%</span>
+    </div>
+
+    <!-- Header -->
+    <div class="mobile-header">
+      <span class="hamburger">☰</span>
+      <h1>AI Factory</h1>
+      <div class="header-actions">
+        <span>🔔</span>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="mobile-content" style="padding-bottom: 4rem;">
+      <!-- Metrics -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">Active</div>
+          <div class="metric-value" style="color: #6366f1;">12</div>
+          <div class="metric-sub">3 need attention</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Completed</div>
+          <div class="metric-value" style="color: #22c55e;">47</div>
+          <div class="metric-sub">+5 this week</div>
+        </div>
+      </div>
+
+      <!-- Overall Progress -->
+      <div class="progress-card">
+        <div class="progress-header">
+          <div class="progress-title">Overall Progress</div>
+          <div class="progress-pct">89%</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 89%"></div></div>
+      </div>
+
+      <!-- Quick Project Progress -->
+      <div style="margin-bottom: 1rem;">
+        <div class="section-title">Active Projects</div>
+        <div style="margin-bottom: 0.5rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+            <span>Auth Service</span><span style="color: #6366f1;">68%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 68%"></div></div>
+        </div>
+        <div style="margin-bottom: 0.5rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+            <span>Payment API</span><span style="color: #f59e0b;">22%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 22%; background: #f59e0b;"></div></div>
+        </div>
+        <div style="margin-bottom: 0.5rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;">
+            <span>API Gateway</span><span style="color: #6366f1;">45%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 45%"></div></div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="section-title">Recent Activity</div>
+      <div class="activity-item">
+        <div class="dot" style="background: #10b981"></div>
+        <div>
+          <div class="activity-text">Dev Agent completed <strong>auth.ts</strong></div>
+          <div class="activity-time">2 min ago</div>
+        </div>
+      </div>
+      <div class="activity-item">
+        <div class="dot" style="background: #f97316"></div>
+        <div>
+          <div class="activity-text">Review Agent approved <strong>PR #42</strong></div>
+          <div class="activity-time">8 min ago</div>
+        </div>
+      </div>
+      <div class="activity-item">
+        <div class="dot" style="background: #ec4899"></div>
+        <div>
+          <div class="activity-text">QA Agent running tests for <strong>Payment API</strong></div>
+          <div class="activity-time">12 min ago</div>
+        </div>
+      </div>
+      <div class="activity-item">
+        <div class="dot" style="background: #8b5cf6"></div>
+        <div>
+          <div class="activity-text">PM Agent decomposed <strong>Dashboard v2</strong></div>
+          <div class="activity-time">25 min ago</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">📊</span>
+        Dashboard
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📁</span>
+        Projects
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🤖</span>
+        Agents
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">⚙</span>
+        Settings
+      </div>
+    </div>
+  </div>
+
+  <div class="wireframe-note">WIREFRAME v1 — Mobile Dashboard • /dashboard (375px)</div>
+</body>
+</html>

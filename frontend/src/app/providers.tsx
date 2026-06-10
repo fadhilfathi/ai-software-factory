@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/providers/ThemeProvider";
 import { UIProvider } from "@/providers/UIProvider";
 import { NotificationProvider } from "@/providers/NotificationProvider";
 import { VisionProvider } from "@/providers/VisionProvider";
+import { RealtimeProvider } from "@/providers/RealtimeProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 
 const queryClient = new QueryClient({
@@ -28,7 +29,9 @@ export function Providers({ children }: { children: ReactNode }) {
           <NotificationProvider>
             <UIProvider>
               <VisionProvider>
-                <AppLayout>{children}</AppLayout>
+                <RealtimeProvider>
+                  <AppLayout>{children}</AppLayout>
+                </RealtimeProvider>
               </VisionProvider>
             </UIProvider>
           </NotificationProvider>
