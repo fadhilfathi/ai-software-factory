@@ -89,25 +89,59 @@ export type UpdateTaskStatusPayload = {
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 
-export type AgentType = "pm" | "developer" | "reviewer" | "devops";
+export type AgentType = "pm" | "architect" | "developer" | "reviewer" | "qa" | "devops" | "security" | "techwriter";
 export type AgentStatus_ = "spawning" | "idle" | "working" | "completed" | "failed";
-
-export type AgentConfig = {
-  model?: string;
-  temperature?: number;
-};
+export type AgentRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type AgentCapability = string;
 
 export type Agent = {
   id: string;
-  type: AgentType;
+  name: string;
+  type: string;
+  role: string;
+  model: string;
+  provider: string;
+  capabilities: string[];
   status: AgentStatus_;
   project_id?: string;
-  config?: AgentConfig;
-  current_task?: string;
+  config?: any;
+  current_task_id?: string;
   tasks_completed?: number;
   uptime?: number;
   created_at: string;
   updated_at: string;
+};
+
+export type CreateAgentPayload = {
+  name: string;
+  type?: string;
+  role: string;
+  model?: string;
+  provider?: string;
+  capabilities?: string[];
+};
+
+export type UpdateAgentPayload = {
+  name?: string;
+  type?: string;
+  role?: string;
+  model?: string;
+  provider?: string;
+  capabilities?: string[];
+  status?: AgentStatus_;
+};
+
+export type AgentRun = {
+  id: string;
+  agent_id: string;
+  task_id?: string;
+  status: AgentRunStatus;
+  input?: string;
+  output?: string;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
 };
 
 export type Assignment = {
@@ -117,6 +151,49 @@ export type Assignment = {
   status: string;
   estimated_completion?: string;
   created_at: string;
+};
+
+export type AssignTaskPayload = {
+  agent_id: string;
+};
+
+export type Execution = {
+  id: string;
+  execution_id: string;
+  task_id: string;
+  agent_id: string;
+  agent_name?: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+};
+
+export type Deliverable = {
+  id: string;
+  task_id: string;
+  agent_id: string;
+  agent_name?: string;
+  title: string;
+  content?: string;
+  version: number;
+  created_at: string;
+};
+
+export type CreateDeliverablePayload = {
+  task_id: string;
+  agent_id: string;
+  title: string;
+  content?: string;
+};
+
+export type UpdateDeliverablePayload = {
+  title?: string;
+  content?: string;
+};
+
+export type UpdateExecutionStatusPayload = {
+  status: string;
 };
 
 // ─── Auth / Users ────────────────────────────────────────────────────────────

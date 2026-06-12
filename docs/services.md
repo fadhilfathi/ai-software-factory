@@ -26,7 +26,7 @@ The AI Software Factory is built as a distributed system of specialized microser
 
 | Service | Port | Protocol | Primary Responsibility |
 |---------|------|----------|------------------------|
-| API Gateway | 8000 | HTTP/gRPC | Request routing, auth, rate limiting, load balancing |
+| API Gateway | 8080 | HTTP/gRPC | Request routing, auth, rate limiting, load balancing |
 | Project Service | 8001 | gRPC | Project lifecycle, metadata, progress tracking |
 | Agent Orchestrator | 8002 | gRPC + NATS | Agent spawning, coordination, task distribution |
 | Code Service | 8003 | gRPC | Code generation, refactoring, analysis |
@@ -54,22 +54,22 @@ The AI Software Factory is built as a distributed system of specialized microser
 
 #### REST Endpoints
 ```
-GET    /api/v1/health                    # Health check
-POST   /api/v1/auth/login                # User login
-POST   /api/v1/auth/refresh              # Token refresh
-POST   /api/v1/projects                  # Create project
-GET    /api/v1/projects                  # List projects
-GET    /api/v1/projects/{id}             # Get project details
-GET    /api/v1/projects/{id}/status      # Project status
-GET    /api/v1/projects/{id}/events      # Project event stream (SSE)
-POST   /api/v1/projects/{id}/features    # Add feature request
-GET    /api/v1/projects/{id}/artifacts   # List project artifacts
-GET    /api/v1/projects/{id}/artifacts/{artifact_id}  # Download artifact
+GET    /v1/healthz                       # Health check
+POST   /v1/auth/login                # User login
+POST   /v1/auth/refresh              # Token refresh
+POST   /v1/projects                  # Create project
+GET    /v1/projects                  # List projects
+GET    /v1/projects/{id}             # Get project details
+GET    /v1/projects/{id}/status      # Project status
+GET    /v1/projects/{id}/events      # Project event stream (SSE)
+POST   /v1/projects/{id}/features    # Add feature request
+GET    /v1/projects/{id}/artifacts   # List project artifacts
+GET    /v1/projects/{id}/artifacts/{artifact_id}  # Download artifact
 ```
 
 #### WebSocket
 ```
-WS /api/v1/ws/projects/{id}              # Real-time project updates
+WS /v1/ws/projects/{id}              # Real-time project updates
 ```
 
 ### Data Ownership
@@ -84,3 +84,86 @@ WS /api/v1/ws/projects/{id}              # Real-time project updates
 - Horizontal: Stateless, scale behind load balancer
 - Target: < 10ms p99 latency overhead
 - Auto-scale on: request rate, CPU, connection count
+
+---
+
+## 2. Project Service
+
+### Responsibility
+- Project lifecycle management (Intake → Done)
+- Metadata and progress tracking
+- Task decomposition (PM Agent interface)
+- Backlog and sprint management
+- Project-level configuration and templates
+
+### API Surface
+```
+POST   /v1/projects                  # Create project
+GET    /v1/projects                  # List projects
+GET    /v1/projects/{id}             # Get project details
+PUT    /v1/projects/{id}             # Update project
+DELETE /v1/projects/{id}             # Delete project
+POST   /v1/projects/{id}/decompose   # Trigger task decomposition
+```
+
+---
+
+## 3. Code Service
+
+### Responsibility
+- Code generation from natural language or formal specs (OpenAPI, etc.)
+- Incremental code modifications (features, fixes, refactoring)
+- Multi-language support (MVP: TS, Python, Go, Rust)
+- Infrastructure as Code (IaC) generation
+- Project file management and static analysis
+- Integration with Git for commits and branch management
+
+### API Surface
+```
+POST   /v1/code/generate             # Request code generation for a task
+GET    /v1/code/{projectId}/files/*path  # Retrieve file content
+POST   /v1/code/{projectId}/commits  # Create a new commit
+GET    /v1/code/{projectId}/diff     # Get diff between commits/branches
+GET    /v1/code/{projectId}/analysis # Static analysis and complexity report
+```
+
+### Data Ownership
+- Code generation requests and statuses
+- Project file metadata and cached content
+- Analysis reports
+
+---
+
+## 4. Review Service
+
+### Responsibility
+- Automated code review (Correctness, Security, Performance)
+- Standards and conventions enforcement
+- Quality gate management for PRs and code batches
+- Orchestration of human-in-the-loop review workflows
+- Architecture Decision Record (ADR) review and management
+
+### API Surface
+```
+POST   /v1/reviews                   # Request review for a commit
+GET    /v1/reviews/{id}              # Get review findings and status
+POST   /v1/reviews/{id}/comments     # Add inline comments
+PATCH  /v1/reviews/{id}/status       # Approve or request changes
+GET    /v1/reviews/project/{projectId} # List project reviews
+```
+
+### Data Ownership
+- Review results, findings, and inline comments
+- Quality gate configurations
+- Review analytics and history
+
+---
+
+## 5. Agent Orchestrator
+
+### Responsibility
+- Agent lifecycle management (spawn, monitor, shutdown)
+- Task distribution and parallel execution coordination
+- Inter-agent communication bus management
+- Agent health and performance monitoring
+- Context isolation and propagation between agent runs

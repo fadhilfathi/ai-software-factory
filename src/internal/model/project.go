@@ -23,8 +23,9 @@ type Project struct {
 	Description string        `json:"description,omitempty"`
 	OwnerID     uuid.UUID     `json:"owner_id"`
 	Status      ProjectStatus `json:"status"`
-	Template    string        `json:"template,omitempty"`
-	Progress    int           `json:"progress,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
+	Template     string        `json:"template,omitempty"`
+	Progress     int           `json:"progress,omitempty"`
+	ActiveAgents int           `json:"active_agents,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 }

@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.22"
+  GO_VERSION: "1.25"
   NODE_VERSION: "22"
 
 jobs:
@@ -72,6 +72,23 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --loglevel=warn
       - run: npm run lint
+
+  test-frontend:
+    name: Test Frontend
+    needs: [lint-frontend]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --loglevel=warn
+      - run: npm run test
 
   # ---------------------------------------------------------------------------
   # Tests — run linters first to fail fast
@@ -127,7 +144,7 @@ jobs:
 
   build-frontend:
     name: Build Frontend
-    needs: [lint-frontend]
+    needs: [test-frontend]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -153,31 +170,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          # Build images tagged for CI
-          docker compose -f docker-compose.yml build --pull
       - name: Start stack
         run: |
-          docker compose -f docker-compose.yml up -d
+          docker compose -f docker-compose.yml up -d --build
       - name: Wait for health
         run: |
           for i in $(seq 1 30); do
             healthy=true
-            for svc in api frontend; do
-              status=$(docker inspect --format='{{.State.Health.Status}}' \
-                "ai-software-factory-$svc-1" 2>/dev/null)
+            for svc in api frontend redis db; do
+              id=$(docker compose ps -q "$svc" 2>/dev/null || true)
+              if [ -z "$id" ]; then
+                healthy=false
+                break
+              fi
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$id" 2>/dev/null)
               if [ "$status" != "healthy" ]; then
                 healthy=false
                 break
               fi
             done
-            $healthy && break
+            if $healthy; then
+              break
+            fi
             sleep 2
           done
           # Final health check — fail if still unhealthy
-          for svc in api frontend; do
-            docker inspect --format='{{.State.Health.Status}} {{.Name}}' \
-              "ai-software-factory-$svc-1"
+          for svc in api frontend redis db; do
+            id=$(docker compose ps -q "$svc" 2>/dev/null || true)
+            if [ -n "$id" ]; then
+              docker inspect --format='{{.State.Health.Status}} {{.Name}}' "$id"
+            fi
           done
           # Check all services are healthy
           docker ps --format 'table {{.Names}}\t{{.Status}}'
@@ -192,7 +214,7 @@ jobs:
       - name: Dump logs on failure
         if: failure()
         run: |
-          for svc in db api frontend; do
+          for svc in db redis api frontend; do
             echo "=== $svc logs ==="
             docker compose logs --tail=50 "$svc"
           done

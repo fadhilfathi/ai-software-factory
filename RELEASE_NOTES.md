@@ -86,7 +86,7 @@ Link to specific migration section or steps.
   support.
 
 #### Backend
-- Go 1.22+ RESTful API with structured logging (`log/slog`), panic recovery,
+- Go 1.25+ RESTful API with structured logging (`log/slog`), panic recovery,
   CORS, request ID injection, and per-user/per-IP rate limiting.
 - PostgreSQL-backed data layer with migration management.
 - Dependency-tracking for task scheduling and agent coordination.
@@ -148,8 +148,8 @@ Link to specific migration section or steps.
 
 | Component | Technology | Version | Notes |
 |-----------|-----------|---------|-------|
-| API Server | Go | 1.22+ | RESTful backend on `:8080` |
-| Frontend | Next.js 14 / React 18 | 20+ (LTS) | TypeScript + Tailwind CSS |
+| API Server | Go | 1.25+ | RESTful backend on `:8080` |
+| Frontend | Next.js 16 / React 19 | 22+ (LTS) | TypeScript + Tailwind CSS 4 |
 | Database | PostgreSQL | 16 | Primary data store |
 | Cache | Redis | 7+ | Session cache (future use) |
 | Container Runtime | Docker | 24+ | Build and orchestration |

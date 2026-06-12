@@ -17,7 +17,8 @@ export const queryKeys = {
   },
   agents: {
     all: ["agents"] as const,
-    list: () => ["agents", "list"] as const,
+    list: (filters?: Record<string, string | undefined>) =>
+      ["agents", "list", filters] as const,
     detail: (id: string) => ["agents", "detail", id] as const,
     metrics: (filters?: Record<string, string | undefined>) =>
       ["agents", "metrics", filters] as const,
@@ -49,5 +50,17 @@ export const queryKeys = {
   },
   code: {
     generate: ["code", "generate"] as const,
+  },
+  executions: {
+    all: ["executions"] as const,
+    list: (filters?: Record<string, string | undefined>) =>
+      ["executions", "list", filters] as const,
+    detail: (id: string) => ["executions", "detail", id] as const,
+  },
+  deliverables: {
+    all: ["deliverables"] as const,
+    list: (filters?: Record<string, string | undefined>) =>
+      ["deliverables", "list", filters] as const,
+    detail: (id: string) => ["deliverables", "detail", id] as const,
   },
 } as const;

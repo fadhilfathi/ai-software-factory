@@ -21,7 +21,7 @@
 | Tool | Version | Required For | Install |
 |------|---------|--------------|---------|
 | Docker | 24+ | Running the full stack (recommended) | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
-| Go | 1.22+ | Backend development / debugging | [go.dev/dl](https://go.dev/dl/) |
+| Go | 1.25+ | Backend development / debugging | [go.dev/dl](https://go.dev/dl/) |
 | Node.js | 22+ | Frontend development / debugging | [nodejs.org](https://nodejs.org/) |
 | Git | 2.40+ | Version control | [git-scm.com](https://git-scm.com/) |
 

@@ -1,7 +1,7 @@
 # AI Software Factory — Developer Guide
 
-> **Document Version**: 1.0  
-> **Last Updated**: 2026-06-10  
+> **Document Version**: 1.1  
+> **Last Updated**: 2026-06-12  
 > **Applies To**: API v1  
 > **Repository**: `github.com/example/project`
 
@@ -58,8 +58,8 @@ If you are an end user looking for feature documentation and tutorials, see the
 
 | Tool       | Version    | Purpose                        |
 |------------|------------|--------------------------------|
-| Go             | 1.22+      | Backend development       |
-| Node.js        | 20+ (LTS)  | Frontend development             |
+| Go             | 1.25+      | Backend development       |
+| Node.js        | 22+ (LTS)  | Frontend development             |
 | Docker     | 24+        | Containerized development      |
 | Docker Compose | 2.24+  | Multi-service orchestration    |
 | PostgreSQL | 16         | Primary database               |
@@ -199,7 +199,7 @@ npm run dev    # → http://localhost:3000
 
 | Layer        | Technology                              |
 |-------------|------------------------------------------|
-| Backend      | Go 1.22, net/http (Go 1.22 ServeMux)   |
+| Backend      | Go 1.25, Gin Framework                   |
 | Frontend     | Next.js 16, React 19, TypeScript 5      |
 | Styling      | Tailwind CSS 4                          |
 | State Mgmt   | TanStack React Query, Zustand           |
@@ -213,7 +213,7 @@ npm run dev    # → http://localhost:3000
 
 ### Communication Patterns
 
-- **Command (sync):** REST over HTTP — creates, reads, and mutates resources
+- **Command (sync):** REST over HTTP (Gin) — creates, reads, and mutates resources
 - **Events (async):** Scheduled or agent-initiated — project status changes, build completions
 - **Real-time (SSE):** Event streams for live agent status updates (planned)
 
@@ -1137,22 +1137,23 @@ src/
 | Package      | Responsibility                                        |
 |--------------|------------------------------------------------------|
 | `cmd`        | Bootstrap: config → logger → router → serve          |
-| `handler`    | HTTP layer: parse request, validate, call service, format response |
+| `handler`    | Gin layer: parse request, validate, call service, format response |
 | `service`    | Business logic: orchestration, validation rules      |
 | `model`      | Domain types (Project, Agent, Task, etc.)            |
-| `middleware` | Request pipeline: CORS → RequestID → Recovery → Logger → Auth |
-| `router`     | Route table: method + path → handler mapping         |
+| `middleware` | Gin middleware chain: CORS → RequestID → Recovery → Logger → Auth |
+| `router`     | Gin engine and route group definitions               |
 | `config`     | Environment variable parsing and defaults            |
 
 ### Middleware Chain
 
-Requests pass through middleware in this order (outer → inner):
+Requests pass through Gin middleware in this order (outer → inner):
 
 1. **CORS** — Permissive headers for development (configurable for production)
 2. **RequestID** — Attaches `X-Request-ID` to every response
 3. **Recovery** — Catches panics, returns 500 with a logged stack trace
 4. **Logger** — Logs method, path, remote address, status, and duration
-5. **Auth** — Validates JWT (`Bearer eyJ...`) or API Key (`Bearer ak_...`).
+5. **RateLimit** — Enforces requests/hour quotas
+6. **Auth** — Validates JWT (`Bearer eyJ...`) or API Key (`Bearer ak_...`).
    Skips auth for healthz, login, and register endpoints.
 
 ### Configuration
@@ -1457,7 +1458,7 @@ The Dockerfile uses a multi-stage build:
 
 ```dockerfile
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /build/api ./cmd/main.go
 
 # Stage 2: Runtime (minimal)
@@ -1581,3 +1582,4 @@ logs for debugging.
 >
 > For user-oriented documentation, see the [User Guide](./user-guide.md).
 > For the API specification, see [API Spec](./api-spec.md).
+> For the platform security architecture, see [Security Architecture](./security.md).

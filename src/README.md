@@ -1,6 +1,6 @@
 # AI Software Factory Backend
 
-This is the backend component of the [AI Software Factory](..), a multi-agent platform for autonomous software development. Built with **Go 1.22+** and the **Gin** framework.
+This is the backend component of the [AI Software Factory](..), a multi-agent platform for autonomous software development. Built with **Go 1.25+** and the **Gin** framework.
 
 ## Project Structure
 
@@ -20,7 +20,7 @@ src/
 
 ## Getting Started
 
-1. Ensure prerequisites (Go 1.22+, PostgreSQL, Redis) are met.
+1. Ensure prerequisites (Go 1.25+, PostgreSQL, Redis) are met.
 2. Build the API:
    ```bash
    go build -o bin/api ./cmd/main.go

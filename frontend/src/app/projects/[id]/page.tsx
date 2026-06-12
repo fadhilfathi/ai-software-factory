@@ -16,6 +16,8 @@ import { ProjectStatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import type { TaskStatus } from "@/lib/types";
 
+import { AgentBadge } from "@/components/shared/AgentBadge";
+
 const TASK_SUMMARY_STATUSES: { key: TaskStatus; label: string }[] = [
   { key: "backlog", label: "Backlog" },
   { key: "ready", label: "Ready" },
@@ -80,13 +82,13 @@ export default function ProjectDetailPage({
   }
 
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
         title={project.name}
         subtitle={
-          <span className="flex items-center gap-2">
-            <span className="text-gray-500">ID: {project.id}</span>
-            <span className="text-gray-600">|</span>
+          <span className="flex items-center gap-3">
+            <span className="text-gray-500 font-mono text-xs">{project.id.toUpperCase()}</span>
+            <span className="h-4 w-px bg-gray-800" />
             <ProjectStatusBadge status={project.status} />
           </span>
         }
@@ -94,147 +96,162 @@ export default function ProjectDetailPage({
           <div className="flex items-center gap-2">
             <Link
               href={`/projects/${id}/board`}
-              className="rounded-lg border border-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
             >
               Kanban Board
             </Link>
+            <div className="h-8 w-px bg-gray-800 mx-1" />
             <Link
               href={`/projects/${id}/edit`}
-              className="rounded-lg border border-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+              className="rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-colors"
             >
               Edit
             </Link>
             <button
               onClick={() => setShowDeleteDialog(true)}
-              className="rounded-lg border border-red-800 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/50 transition-colors"
+              className="rounded-lg border border-red-900/50 px-3 py-2 text-sm text-red-500 hover:bg-red-950/30 transition-colors"
               type="button"
             >
               Delete
             </button>
-            <Link
-              href="/projects"
-              className="text-sm text-gray-400 hover:text-gray-200 transition-colors ml-2"
-            >
-              &larr; Back
-            </Link>
           </div>
         }
       />
 
-      {/* Description */}
-      {project.description && (
-        <p className="mb-6 text-sm text-gray-400">{project.description}</p>
-      )}
-
-      {/* Task Summary Counts */}
-      <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
-        {taskCounts.map(({ key, label, count }) => (
-          <div
-            key={key}
-            className="rounded-lg border border-gray-800 bg-gray-950 p-3 text-center"
-          >
-            <p className="text-lg font-bold text-gray-100">{count}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">
-              {label}
+      <div className="grid gap-8 lg:grid-cols-3">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Description Section */}
+          <section className="rounded-2xl border border-gray-800 bg-gray-950/30 p-6">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">Project Overview</h3>
+            <p className="text-sm text-gray-300 leading-relaxed italic">
+              {project.description || "No description provided for this project."}
             </p>
-          </div>
-        ))}
-      </div>
+          </section>
 
-      {/* Two column: Task list + Details */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Tasks */}
-        <div className="lg:col-span-2 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-              Tasks
-            </h3>
-            <span className="text-xs text-gray-500">
-              {totalTasks > 0 ? `${totalTasks} total` : ""}
-            </span>
-          </div>
-
-          {tasksLoading ? (
-            <Skeleton.List count={3} />
-          ) : !tasks || tasks.length === 0 ? (
-            <EmptyState
-              icon=""
-              title="No tasks yet"
-              className="rounded-lg border border-gray-800 bg-gray-950 py-8"
-            />
-          ) : (
-            tasks.map((task) => (
-              <div
-                key={task.id}
-                className="rounded-lg border border-gray-800 bg-gray-950 p-3 hover:border-gray-700 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-mono text-gray-500 shrink-0">
-                      {task.id.slice(0, 8)}
-                    </span>
-                    <span className="text-sm font-medium text-gray-200 truncate">
-                      {task.title}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <PriorityBadge priority={task.priority} />
-                    <TaskStatusBadge status={task.status} />
-                  </div>
+          {/* Task Summary Grid */}
+          <section>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">Task Distribution</h3>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+              {taskCounts.map(({ key, label, count }) => (
+                <div
+                  key={key}
+                  className="group rounded-xl border border-gray-800 bg-gray-950 p-4 transition-all hover:border-gray-700"
+                >
+                  <p className="text-2xl font-bold text-gray-100 group-hover:text-emerald-400 transition-colors">{count}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1 font-bold">
+                    {label}
+                  </p>
                 </div>
-                {task.assignee_id && (
-                  <span className="mt-1.5 inline-flex items-center gap-1 rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
-                    @{task.assignee_id.slice(0, 8)}
-                  </span>
-                )}
-              </div>
-            ))
-          )}
+              ))}
+            </div>
+          </section>
+
+          {/* Recent Tasks List */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">
+                Project Tasks
+              </h3>
+              <Link 
+                href={`/projects/${id}/board`}
+                className="text-xs text-emerald-500 hover:underline"
+              >
+                View full board &rarr;
+              </Link>
+            </div>
+
+            <div className="space-y-3">
+              {tasksLoading ? (
+                <Skeleton.List count={3} />
+              ) : !tasks || tasks.length === 0 ? (
+                <EmptyState
+                  icon=""
+                  title="No tasks yet"
+                  className="rounded-xl border border-gray-800 bg-gray-950/50 py-12"
+                />
+              ) : (
+                tasks.slice(0, 10).map((task) => (
+                  <div
+                    key={task.id}
+                    className="group rounded-xl border border-gray-800 bg-gray-950 p-4 hover:border-gray-700 hover:bg-gray-900/40 transition-all flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-4 min-w-0">
+                      <span className="text-[10px] font-mono text-gray-600 shrink-0 uppercase">
+                        {task.id.slice(0, 4)}
+                      </span>
+                      <span className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                        {task.title}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <PriorityBadge priority={task.priority} uppercase={false} className="hidden sm:inline-flex" />
+                      <TaskStatusBadge status={task.status} />
+                      <div className="h-4 w-px bg-gray-800" />
+                      {task.assignee_id ? (
+                        <AgentBadge type="developer" />
+                      ) : (
+                        <div className="h-6 w-6 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center text-[8px] text-gray-600 italic">
+                          ?
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </div>
 
-        {/* Project Info Sidebar */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-            Details
-          </h3>
-
-          <div className="space-y-2 rounded-lg border border-gray-800 bg-gray-950 p-3">
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Progress</span>
-              <span className="text-gray-300">{project.progress ?? 0}%</span>
-            </div>
-            <ProgressBar value={project.progress ?? 0} />
-          </div>
-
-          <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 space-y-2 text-xs">
-            {project.template && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Template</span>
-                <span className="text-gray-300">{project.template}</span>
+        {/* Sidebar Info */}
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-gray-800 bg-gray-950/50 p-6 space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">Project Health</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-gray-400">Completion</span>
+                  <span className="text-emerald-400">{project.progress ?? 0}%</span>
+                </div>
+                <ProgressBar value={project.progress ?? 0} size="md" />
               </div>
-            )}
-            {project.active_agents !== undefined && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Active Agents</span>
-                <span className="text-gray-300">{project.active_agents}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-gray-500">Created</span>
-              <span className="text-gray-300">{timeAgo(project.created_at)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Updated</span>
-              <span className="text-gray-300">{timeAgo(project.updated_at)}</span>
-            </div>
-          </div>
 
-          <Link
-            href={`/projects/${id}/board`}
-            className="flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
-          >
-            Open Kanban Board
-          </Link>
+            <div className="space-y-4 pt-4 border-t border-gray-800/50">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">Metadata</h3>
+              <div className="space-y-3">
+                {project.template && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Architecture</span>
+                    <span className="text-sm text-gray-300 font-medium">{project.template}</span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Active Agents</span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-sm text-gray-300 font-medium">{project.active_agents ?? 0} Agents Online</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Timeline</span>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-gray-400">Created {timeAgo(project.created_at)}</p>
+                    <p className="text-[11px] text-gray-400">Last activity {timeAgo(project.updated_at)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <Link
+                href={`/projects/${id}/board`}
+                className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-bold text-gray-200 hover:bg-gray-800 transition-all border border-gray-800"
+              >
+                Go to Mission Control &rarr;
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
 

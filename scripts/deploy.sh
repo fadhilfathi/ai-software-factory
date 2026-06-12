@@ -51,7 +51,7 @@ wait_healthy() {
   local elapsed=0
   while [ $elapsed -lt $timeout ]; do
     local all_healthy=true
-    for svc in api frontend; do
+    for svc in api frontend redis db; do
       local id
       id=$(docker compose ps -q "$svc" 2>/dev/null || true)
       if [ -z "$id" ]; then

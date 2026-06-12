@@ -319,7 +319,7 @@ docker compose pull
 
 | Service | Dockerfile | Base Image | Runtime User |
 |---------|-----------|------------|--------------|
-| API | `src/Dockerfile` | `golang:1.22-alpine` → `alpine:3.20` | `appuser` (non-root) |
+| API | `src/Dockerfile` | `golang:1.25-alpine` → `alpine:3.20` | `appuser` (non-root) |
 | Frontend | `frontend/Dockerfile` | `node:22-alpine` → `node:22-alpine` | `appuser` (non-root) |
 
 ### Compose Dependencies

@@ -60,7 +60,7 @@ git --version                   # Must be 2.40+
 psql --version                  # Must be 16
 
 # Check Go version (if developing natively)
-go version                      # Must be 1.22+
+go version                      # Must be 1.25+
 ```
 
 ### 2. Backup Existing Data
@@ -357,7 +357,7 @@ docker compose logs api | grep -i "llm\|provider\|model"
 
 | App Version | API Version | DB Schema | Docker Compose | Min Go | Min Node.js (FE) | Min PostgreSQL |
 |------------|-------------|-----------|----------------|--------|-------------|----------------|
-| v1.0.0     | v1          | v1        | 2.24+          | 1.22+  | 20 (LTS)    | 16             |
+| v1.0.0     | v1          | v1        | 2.24+          | 1.25+  | 22 (LTS)    | 16             |
 
 ---
 

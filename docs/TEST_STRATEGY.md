@@ -14,7 +14,7 @@ We adopt a testing pyramid approach, prioritizing faster, lower-level tests whil
 - **Unit Tests**: Focus on isolated business logic (services), model validation, and utility functions.
   - Framework: `testing` (standard library).
 - **Integration Tests**: Verify API endpoints, handler interactions, and database connectivity.
-  - Framework: `net/http/httptest` with the Gin router.
+  - Framework: `httptest` with the Gin router.
 
 ### 2.2 Frontend (Next.js/React/TypeScript)
 - **Unit/Component Tests**: Focus on React components, hooks, and shared logic.

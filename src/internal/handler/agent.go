@@ -3,13 +3,15 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// AgentHandler handles agent lifecycle endpoints.
 type AgentHandler struct {
 	svc *service.AgentService
 }
@@ -18,130 +20,205 @@ func NewAgentHandler(svc *service.AgentService) *AgentHandler {
 	return &AgentHandler{svc: svc}
 }
 
-type spawnAgentRequest struct {
-	ProjectID string `json:"project_id"`
-	Type      string `json:"type"`
-	Config    *struct {
-		Model       string  `json:"model"`
-		Temperature float64 `json:"temperature"`
-	} `json:"config,omitempty"`
+type createAgentRequest struct {
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Role         string   `json:"role"`
+	Model        string   `json:"model"`
+	Provider     string   `json:"provider"`
+	Capabilities []string `json:"capabilities"`
+}
+
+type updateAgentRequest struct {
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Role         string   `json:"role"`
+	Model        string   `json:"model"`
+	Provider     string   `json:"provider"`
+	Capabilities []string `json:"capabilities"`
+	Status       string   `json:"status"`
 }
 
 type agentResponse struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	ProjectID   string `json:"project_id,omitempty"`
-	CurrentTask string `json:"current_task,omitempty"`
-	TasksDone   int    `json:"tasks_completed,omitempty"`
-	Uptime      int    `json:"uptime,omitempty"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	Role          string   `json:"role"`
+	Model         string   `json:"model"`
+	Provider      string   `json:"provider"`
+	Capabilities  []string `json:"capabilities"`
+	Status        string   `json:"status"`
+	ProjectID     string   `json:"project_id,omitempty"`
+	CurrentTaskID string   `json:"current_task_id,omitempty"`
+	TasksDone     int      `json:"tasks_done"`
+	Uptime        int      `json:"uptime"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     string   `json:"updated_at"`
 }
 
-// Spawn handles POST /agents/spawn.
-func (h *AgentHandler) Spawn(c *gin.Context) {
-	var req spawnAgentRequest
+func (h *AgentHandler) Create(c *gin.Context) {
+	var req createAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
-	var cfg *model.AgentConfig
-	if req.Config != nil {
-		cfg = &model.AgentConfig{
-			Model:       req.Config.Model,
-			Temperature: req.Config.Temperature,
+	agent, svcErr := h.svc.CreateAgent(c.Request.Context(), service.CreateAgentRequest{
+		Name:         req.Name,
+		Type:         req.Type,
+		Role:         req.Role,
+		Model:        req.Model,
+		Provider:     req.Provider,
+		Capabilities: req.Capabilities,
+	})
+	if svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	writeJSON(c, http.StatusCreated, toAgentResponse(agent))
+}
+
+func (h *AgentHandler) List(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	filter := store.AgentFilter{
+		Page:  page,
+		Limit: limit,
+	}
+	if s := c.Query("status"); s != "" {
+		filter.Status = model.AgentStatus(s)
+	}
+	if r := c.Query("role"); r != "" {
+		filter.Role = r
+	}
+	if t := c.Query("type"); t != "" {
+		filter.Type = t
+	}
+	if pid := c.Query("project_id"); pid != "" {
+		if u, err := uuid.Parse(pid); err == nil {
+			filter.ProjectID = u
 		}
 	}
 
-	agent, svcErr := h.svc.SpawnAgent(service.SpawnAgentRequest{
-		ProjectID: req.ProjectID,
-		Type:      req.Type,
-		Config:    cfg,
-	})
+	agents, pagination, svcErr := h.svc.ListAgents(c.Request.Context(), filter)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(c, http.StatusCreated, agentResponse{
-		ID:        agent.ID,
-		Type:      string(agent.Type),
-		Status:    string(agent.Status),
-		ProjectID: agent.ProjectID,
-	})
-}
-
-// List handles GET /agents.
-func (h *AgentHandler) List(c *gin.Context) {
-	projectID := c.Query("project_id")
-	page, _ := strconv.Atoi(c.Query("page"))
-	limit, _ := strconv.Atoi(c.Query("limit"))
-
-	agents, pagination, svcErr := h.svc.ListAgents(projectID, page, limit)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
-	}
-
-	items := make([]agentResponse, 0, len(agents))
-	for _, a := range agents {
-		items = append(items, agentResponse{
-			ID:          a.ID,
-			Type:        string(a.Type),
-			Status:      string(a.Status),
-			ProjectID:   a.ProjectID,
-			CurrentTask: a.CurrentTask,
-			TasksDone:   a.TasksDone,
-			Uptime:      a.Uptime,
-		})
+	data := make([]agentResponse, len(agents))
+	for i, a := range agents {
+		data[i] = toAgentResponse(a)
 	}
 
 	writeJSON(c, http.StatusOK, PaginatedResponse{
-		Data:       items,
-		Pagination: Pagination{Page: pagination.Page, Limit: pagination.Limit, Total: pagination.Total, Pages: pagination.Pages},
+		Data: data,
+		Pagination: Pagination{
+			Page:  pagination.Page,
+			Limit: pagination.Limit,
+			Total: pagination.Total,
+			Pages: pagination.Pages,
+		},
 	})
 }
 
-type assignTaskRequest struct {
-	TaskID   string                 `json:"task_id"`
-	Priority string                 `json:"priority"`
-	Context  map[string]interface{} `json:"context,omitempty"`
-}
-
-type assignTaskResponse struct {
-	ID                  string `json:"id"`
-	TaskID              string `json:"task_id"`
-	Status              string `json:"status"`
-	EstimatedCompletion string `json:"estimated_completion,omitempty"`
-}
-
-// AssignTask handles POST /agents/{id}/assign.
-func (h *AgentHandler) AssignTask(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Agent ID is required")
+func (h *AgentHandler) Get(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
 		return
 	}
 
-	var req assignTaskRequest
+	agent, svcErr := h.svc.GetAgent(c.Request.Context(), id)
+	if svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	writeJSON(c, http.StatusOK, toAgentResponse(agent))
+}
+
+func (h *AgentHandler) Update(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		return
+	}
+
+	var req updateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
-	agent, svcErr := h.svc.AssignTask(id, service.AssignTaskRequest{
-		TaskID:   req.TaskID,
-		Priority: req.Priority,
-		Context:  req.Context,
-	})
+	svcReq := service.UpdateAgentRequest{
+		Name:         req.Name,
+		Type:         req.Type,
+		Role:         req.Role,
+		Model:        req.Model,
+		Provider:     req.Provider,
+		Capabilities: req.Capabilities,
+	}
+	if req.Status != "" {
+		svcReq.Status = model.AgentStatus(req.Status)
+	}
+
+	agent, svcErr := h.svc.UpdateAgent(c.Request.Context(), id, svcReq)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(c, http.StatusOK, assignTaskResponse{
-		ID:     agent.ID,
-		TaskID: req.TaskID,
-		Status: string(agent.Status),
-	})
+	writeJSON(c, http.StatusOK, toAgentResponse(agent))
+}
+
+func (h *AgentHandler) Heartbeat(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		return
+	}
+
+	if svcErr := h.svc.Heartbeat(c.Request.Context(), id); svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AgentHandler) Delete(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		return
+	}
+
+	if svcErr := h.svc.DeleteAgent(c.Request.Context(), id); svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func toAgentResponse(a *model.Agent) agentResponse {
+	return agentResponse{
+		ID:            a.ID.String(),
+		Name:          a.Name,
+		Type:          a.Type,
+		Role:          a.Role,
+		Model:         a.Model,
+		Provider:      a.Provider,
+		Capabilities:  a.Capabilities,
+		Status:        string(a.Status),
+		ProjectID:     a.ProjectID,
+		CurrentTaskID: a.CurrentTaskID,
+		TasksDone:     a.TasksDone,
+		Uptime:        a.Uptime,
+		CreatedAt:     a.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     a.UpdatedAt.Format(time.RFC3339),
+	}
 }

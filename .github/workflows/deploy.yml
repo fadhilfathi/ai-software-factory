@@ -104,18 +104,32 @@ jobs:
           echo "Waiting for services to become healthy..."
           for i in $(seq 1 30); do
             all_healthy=true
-            for svc in api frontend; do
-              status=$(docker inspect --format='{{.State.Health.Status}}' \
-                "ai-software-factory-$svc-1" 2>/dev/null)
+            for svc in api frontend redis db; do
+              id=$(docker compose ps -q "$svc" 2>/dev/null || true)
+              if [ -z "$id" ]; then
+                all_healthy=false
+                break
+              fi
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$id" 2>/dev/null)
               if [ "$status" != "healthy" ]; then
                 all_healthy=false
                 break
               fi
             done
-            $all_healthy && break
+            if $all_healthy; then
+              break
+            fi
             sleep 2
           done
           docker ps --format 'table {{.Names}}\t{{.Status}}'
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          for svc in db redis api frontend; do
+            echo "=== $svc logs ==="
+            docker compose logs --tail=50 "$svc"
+          done
 
       - name: Rollback on health failure
         if: failure()

@@ -52,15 +52,15 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 ## Technology Stack
 
 ### Frontend
-- **Framework:** Next.js 14+ (React 18)
+- **Framework:** Next.js 16 (React 19)
 - **Language:** TypeScript
-- **Styling:** Tailwind CSS
+- **Styling:** Tailwind CSS 4
 - **State Management:** React Query + Zustand
 - **Drag-and-Drop:** @dnd-kit (Kanban board)
 - **Real-time:** Server-Sent Events (SSE) for agent status
 
 ### Backend
-- **Runtime:** Go 1.22+
+- **Runtime:** Go 1.25+
 - **Framework:** Gin (high performance)
 - **Language:** Go
 - **API Style:** REST + WebSocket for real-time
@@ -103,7 +103,6 @@ The `ProjectService` wraps the `store.Store` interface and provides business log
 | `ListProjects` | Paginated list with optional status filter | Page defaults to 1, limit to 20 |
 | `UpdateProject` | Partial update (name, description, status) | Only provided fields applied |
 | `DeleteProject` | Remove a project by UUID | Returns `NOT_FOUND` if missing |
-| `DecomposeProject` | Trigger project decomposition (future) | Validates project exists |
 
 ### Task Service
 
@@ -279,7 +278,7 @@ Built with `@dnd-kit/core` and `@dnd-kit/sortable`. Uses `PointerSensor` with 5p
 ```
 Local Machine
 ├── Docker Compose
-│   ├── API Server (port 3001)
+│   ├── API Server (port 8080)
 │   ├── PostgreSQL (port 5432)
 │   ├── Redis (port 6379)
 │   └── MinIO (port 9000)
@@ -353,6 +352,8 @@ User drags task card → DndContext.onDragEnd
 ---
 
 ## Security Architecture
+
+For a comprehensive formalization of the platform's security controls, identity management, and compliance standards, see the [Security Architecture](./security.md) document.
 
 ### Authentication Flow
 ```

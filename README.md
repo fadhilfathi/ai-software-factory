@@ -4,15 +4,17 @@ A multi-agent software development platform that orchestrates specialized AI age
 
 ## Architecture
 
-- **Backend:** Go 1.22+ using Gin framework for high-performance REST APIs.
-- **Frontend:** Next.js 14+ (React 18) with TypeScript and Tailwind CSS.
+- **Backend:** Go 1.25+ using Gin framework for high-performance REST APIs.
+- **Frontend:** Next.js 16 (React 19) with TypeScript and Tailwind CSS 4.
 - **Data:** PostgreSQL (Primary), Redis (Cache), S3-compatible object storage.
 - **Infrastructure:** Docker and Docker Compose (development), Kubernetes (production).
 
 ## Documentation
 
 - [System Architecture](docs/architecture.md)
+- [Security Architecture](docs/security.md)
 - [Developer Guide](docs/developer-guide.md)
+- [User Guide](docs/user-guide.md)
 - [Environment Setup](docs/environment-setup.md)
 - [API Specification](docs/api-spec.md)
 

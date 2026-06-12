@@ -10,18 +10,22 @@ import (
 
 // memoryStore implements Store with in-memory maps protected by a mutex.
 type memoryStore struct {
-	mu         sync.RWMutex
-	users      map[string]*model.User
-	usersEmail map[string]*model.User
-	projects   map[string]*model.Project
-	agents     map[string]*model.Agent
-	tasks      map[string]*model.Task
-	codeGens   map[string]*model.CodeGenRequest
-	files      map[string]*model.ProjectFile // key: "projectID:path"
-	commits    map[string]*model.Commit      // key: "projectID:sha"
-	reviews    map[string]*model.Review
+	mu          sync.RWMutex
+	users       map[string]*model.User
+	usersEmail  map[string]*model.User
+	projects    map[string]*model.Project
+	agents      map[string]*model.Agent
+	agentRuns   map[string]*model.AgentRun
+	executions   map[string]*model.Execution
+	deliverables map[string]*model.Deliverable
+	tasks        map[string]*model.Task
+	codeGens    map[string]*model.CodeGenRequest
+	files       map[string]*model.ProjectFile // key: "projectID:path"
+	commits     map[string]*model.Commit      // key: "projectID:sha"
+	reviews     map[string]*model.Review
 	deployments map[string]*model.Deployment
-	webhooks   map[string]*model.Webhook
+	webhooks    map[string]*model.Webhook
+	auditLogs   map[string]*model.AuditLog
 }
 
 // NewMemoryStore creates a new in-memory store ready for use.
@@ -31,24 +35,32 @@ func NewMemoryStore() Store {
 		usersEmail:  make(map[string]*model.User),
 		projects:    make(map[string]*model.Project),
 		agents:      make(map[string]*model.Agent),
-		tasks:       make(map[string]*model.Task),
+		agentRuns:   make(map[string]*model.AgentRun),
+		executions:   make(map[string]*model.Execution),
+		deliverables: make(map[string]*model.Deliverable),
+		tasks:        make(map[string]*model.Task),
 		codeGens:    make(map[string]*model.CodeGenRequest),
 		files:       make(map[string]*model.ProjectFile),
 		commits:     make(map[string]*model.Commit),
 		reviews:     make(map[string]*model.Review),
 		deployments: make(map[string]*model.Deployment),
 		webhooks:    make(map[string]*model.Webhook),
+		auditLogs:   make(map[string]*model.AuditLog),
 	}
 }
 
-func (m *memoryStore) Users() UserStore           { return &memoryUserStore{m} }
-func (m *memoryStore) Projects() ProjectStore      { return &memoryProjectStore{m} }
-func (m *memoryStore) Agents() AgentStore           { return &memoryAgentStore{m} }
+func (m *memoryStore) Users() UserStore             { return &memoryUserStore{m} }
+func (m *memoryStore) Projects() ProjectStore        { return &memoryProjectStore{m} }
+func (m *memoryStore) Agents() AgentStore             { return &memoryAgentStore{m} }
+func (m *memoryStore) AgentRuns() AgentRunStore       { return &memoryAgentRunStore{m} }
+func (m *memoryStore) Executions() ExecutionStore     { return &memoryExecutionStore{m} }
+func (m *memoryStore) Deliverables() DeliverableStore { return &memoryDeliverableStore{m} }
 func (m *memoryStore) Tasks() TaskStore             { return &memoryTaskStore{m} }
 func (m *memoryStore) Code() CodeStore              { return &memoryCodeStore{m} }
 func (m *memoryStore) Reviews() ReviewStore         { return &memoryReviewStore{m} }
 func (m *memoryStore) Deployments() DeploymentStore { return &memoryDeploymentStore{m} }
 func (m *memoryStore) Webhooks() WebhookStore       { return &memoryWebhookStore{m} }
+func (m *memoryStore) AuditLogs() AuditLogStore     { return &memoryAuditLogStore{m} }
 
 // --- User Store ---
 
@@ -174,6 +186,19 @@ func (s *memoryProjectStore) List(filter ProjectFilter) ([]*model.Project, int, 
 		if filter.OwnerID != uuid.Nil && p.OwnerID != filter.OwnerID {
 			continue
 		}
+		if filter.Search != "" && !strings.Contains(strings.ToLower(p.Name), strings.ToLower(filter.Search)) && !strings.Contains(strings.ToLower(p.Description), strings.ToLower(filter.Search)) {
+			continue
+		}
+
+		// Calculate active agents for this project
+		activeCount := 0
+		for _, a := range s.m.agents {
+			if a.ProjectID == p.ID && a.Status == model.AgentWorking {
+				activeCount++
+			}
+		}
+		p.ActiveAgents = activeCount
+
 		filtered = append(filtered, p)
 	}
 
@@ -253,7 +278,16 @@ func (s *memoryAgentStore) List(filter AgentFilter) ([]*model.Agent, int, error)
 
 	var filtered []*model.Agent
 	for _, a := range s.m.agents {
-		if filter.ProjectID != uuid.Nil && a.ProjectID != filter.ProjectID {
+		if filter.ProjectID != uuid.Nil && a.ProjectID != filter.ProjectID.String() {
+			continue
+		}
+		if filter.Status != "" && a.Status != filter.Status {
+			continue
+		}
+		if filter.Type != "" && a.Type != filter.Type {
+			continue
+		}
+		if filter.Role != "" && a.Role != filter.Role {
 			continue
 		}
 		filtered = append(filtered, a)
@@ -302,6 +336,220 @@ func (s *memoryAgentStore) Delete(id uuid.UUID) error {
 	}
 	delete(s.m.agents, key)
 	return nil
+}
+
+// --- Agent Run Store ---
+
+type memoryAgentRunStore struct{ m *memoryStore }
+
+func (s *memoryAgentRunStore) Create(r *model.AgentRun) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, exists := s.m.agentRuns[r.ID.String()]; exists {
+		return ErrAlreadyExists
+	}
+	s.m.agentRuns[r.ID.String()] = r
+	return nil
+}
+
+func (s *memoryAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	r, ok := s.m.agentRuns[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return r, nil
+}
+
+func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.AgentRun, int, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var filtered []*model.AgentRun
+	for _, r := range s.m.agentRuns {
+		if filter.AgentID != uuid.Nil && r.AgentID != filter.AgentID {
+			continue
+		}
+		if filter.TaskID != uuid.Nil {
+			if r.TaskID == nil || *r.TaskID != filter.TaskID {
+				continue
+			}
+		}
+		if filter.Status != "" && string(r.Status) != filter.Status {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
+	})
+	total := len(filtered)
+	page, limit := filter.Page, filter.Limit
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	start := (page - 1) * limit
+	if start >= len(filtered) {
+		return []*model.AgentRun{}, total, nil
+	}
+	end := start + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], total, nil
+}
+
+func (s *memoryAgentRunStore) Update(r *model.AgentRun) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, ok := s.m.agentRuns[r.ID.String()]; !ok {
+		return ErrNotFound
+	}
+	s.m.agentRuns[r.ID.String()] = r
+	return nil
+}
+
+// --- Execution Store ---
+
+type memoryExecutionStore struct{ m *memoryStore }
+
+func (s *memoryExecutionStore) Create(e *model.Execution) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, exists := s.m.executions[e.ExecutionID.String()]; exists {
+		return ErrAlreadyExists
+	}
+	s.m.executions[e.ExecutionID.String()] = e
+	return nil
+}
+
+func (s *memoryExecutionStore) GetByID(id uuid.UUID) (*model.Execution, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	e, ok := s.m.executions[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return e, nil
+}
+
+func (s *memoryExecutionStore) List(filter ExecutionFilter) ([]*model.Execution, int, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+
+	var filtered []*model.Execution
+	for _, e := range s.m.executions {
+		if filter.AgentID != uuid.Nil && e.AgentID != filter.AgentID {
+			continue
+		}
+		if filter.TaskID != uuid.Nil && e.TaskID != filter.TaskID {
+			continue
+		}
+		if filter.Status != "" && string(e.Status) != filter.Status {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
+	})
+
+	total := len(filtered)
+	page, limit := filter.Page, filter.Limit
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	start := (page - 1) * limit
+	if start >= len(filtered) {
+		return []*model.Execution{}, total, nil
+	}
+	end := start + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+
+	return filtered[start:end], total, nil
+}
+
+func (s *memoryExecutionStore) Update(e *model.Execution) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, ok := s.m.executions[e.ExecutionID.String()]; !ok {
+		return ErrNotFound
+	}
+	s.m.executions[e.ExecutionID.String()] = e
+	return nil
+}
+
+// --- Deliverable Store ---
+
+type memoryDeliverableStore struct{ m *memoryStore }
+
+func (s *memoryDeliverableStore) Create(d *model.Deliverable) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, exists := s.m.deliverables[d.ID.String()]; exists {
+		return ErrAlreadyExists
+	}
+	s.m.deliverables[d.ID.String()] = d
+	return nil
+}
+
+func (s *memoryDeliverableStore) GetByID(id uuid.UUID) (*model.Deliverable, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	d, ok := s.m.deliverables[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return d, nil
+}
+
+func (s *memoryDeliverableStore) ListByTask(taskID uuid.UUID) ([]*model.Deliverable, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var result []*model.Deliverable
+	for _, d := range s.m.deliverables {
+		if d.TaskID == taskID {
+			result = append(result, d)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+	return result, nil
+}
+
+func (s *memoryDeliverableStore) Update(d *model.Deliverable) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, ok := s.m.deliverables[d.ID.String()]; !ok {
+		return ErrNotFound
+	}
+	s.m.deliverables[d.ID.String()] = d
+	return nil
+}
+
+func (s *memoryDeliverableStore) ListByAgent(agentID uuid.UUID) ([]*model.Deliverable, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var result []*model.Deliverable
+	for _, d := range s.m.deliverables {
+		if d.AgentID == agentID {
+			result = append(result, d)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+	return result, nil
 }
 
 // --- Task Store ---
@@ -662,3 +910,62 @@ func (s *memoryWebhookStore) Delete(id string) error {
 	delete(s.m.webhooks, id)
 	return nil
 }
+
+// --- Audit Log Store ---
+
+type memoryAuditLogStore struct{ m *memoryStore }
+
+func (s *memoryAuditLogStore) Create(l *model.AuditLog) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if l.ID == uuid.Nil {
+		l.ID = uuid.New()
+	}
+	s.m.auditLogs[l.ID.String()] = l
+	return nil
+}
+
+func (s *memoryAuditLogStore) List(filter AuditLogFilter) ([]*model.AuditLog, int, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+
+	var filtered []*model.AuditLog
+	for _, l := range s.m.auditLogs {
+		if filter.EntityType != "" && l.EntityType != filter.EntityType {
+			continue
+		}
+		if filter.EntityID != uuid.Nil && l.EntityID != filter.EntityID {
+			continue
+		}
+		if filter.UserID != uuid.Nil {
+			if l.UserID == nil || *l.UserID != filter.UserID {
+				continue
+			}
+		}
+		filtered = append(filtered, l)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+
+	total := len(filtered)
+	page, limit := filter.Page, filter.Limit
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	start := (page - 1) * limit
+	if start >= len(filtered) {
+		return []*model.AuditLog{}, total, nil
+	}
+	end := start + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+
+	return filtered[start:end], total, nil
+}
+

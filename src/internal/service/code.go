@@ -8,6 +8,7 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -64,9 +65,9 @@ func (s *CodeService) GenerateCode(ctx context.Context, req GenerateCodeRequest)
 
 	now := time.Now().UTC()
 	codeGen := &model.CodeGenRequest{
-		ID:            generateID("code"),
-		ProjectID:     req.ProjectID,
-		TaskID:        req.TaskID,
+		ID:            uuid.New(),
+		ProjectID:     uuid.MustParse(req.ProjectID),
+		TaskID:        uuid.MustParse(req.TaskID),
 		Specification: req.Specification,
 		Files:         req.Files,
 		Status:        model.CodeGenQueued,
@@ -118,8 +119,8 @@ func (s *CodeService) CreateCommit(ctx context.Context, req CreateCommitRequest)
 
 	now := time.Now().UTC()
 	commit := &model.Commit{
-		SHA:       generateID("sha")[4:12], // short SHA
-		ProjectID: req.ProjectID,
+		SHA:       uuid.New().String()[0:8], // short SHA
+		ProjectID: uuid.MustParse(req.ProjectID),
 		Branch:    req.Branch,
 		Message:   req.Message,
 		Author:    "agent_dev_001",

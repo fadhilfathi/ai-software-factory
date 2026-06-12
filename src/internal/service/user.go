@@ -6,6 +6,7 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -54,13 +55,13 @@ func (s *UserService) Register(req RegisterRequest) (*model.User, *Error) {
 	}
 
 	user := &model.User{
-		ID:        generateID("user"),
-		Email:     req.Email,
-		Password:  string(hashedPassword), // bcrypt hash stored
-		Name:      req.Name,
-		Role:      model.RoleMember,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:           uuid.New(),
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword), // bcrypt hash stored
+		Name:         req.Name,
+		Role:         model.RoleMember,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := s.store.Users().Create(user); err != nil {

@@ -14,6 +14,8 @@ import { PaginationInfo } from "@/components/shared/PaginationInfo";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import Link from "next/link";
 
+import { ProjectCard } from "@/components/shared/ProjectCard";
+
 const STATUS_OPTIONS = [
   { value: "initializing", label: "Initializing" },
   { value: "in_progress", label: "In Progress" },
@@ -35,7 +37,7 @@ function ProjectsListContent() {
   const showEmptyMessage = !search && (!filters.status || filters.status === "all");
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Filter Bar */}
       <FilterBar>
         <SearchInput
@@ -80,7 +82,7 @@ function ProjectsListContent() {
             showEmptyMessage && (
               <Link
                 href="/projects/new"
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
+                className="rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
               >
                 Create Project
               </Link>
@@ -91,44 +93,23 @@ function ProjectsListContent() {
 
       {/* Project Grid */}
       {!isLoading && !isError && projects.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <Link
-              key={project.id}
-              href={`/projects/${project.id}`}
-              className="rounded-lg border border-gray-800 bg-gray-950 p-4 hover:border-gray-700 transition-colors group"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-medium text-gray-200 truncate group-hover:text-emerald-400 transition-colors">
-                  {project.name}
-                </h3>
-                <ProjectStatusBadge status={project.status} />
-              </div>
-              {project.description && (
-                <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">
-                  {project.description}
-                </p>
-              )}
-              <ProgressBar value={project.progress ?? 0} className="mt-3" />
-              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                <span>{timeAgo(project.updated_at)}</span>
-                {project.active_agents !== undefined && project.active_agents > 0 && (
-                  <span>{project.active_agents} agent{project.active_agents !== 1 ? "s" : ""}</span>
-                )}
-              </div>
-            </Link>
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       )}
 
       {/* Pagination info */}
       {data?.pagination && data.pagination.total > 0 && (
-        <PaginationInfo
-          total={data.pagination.total}
-          page={data.pagination.page}
-          pages={data.pagination.pages}
-          showing={projects.length}
-        />
+        <div className="pt-4 border-t border-gray-800/50">
+          <PaginationInfo
+            total={data.pagination.total}
+            page={data.pagination.page}
+            pages={data.pagination.pages}
+            showing={projects.length}
+          />
+        </div>
       )}
     </div>
   );

@@ -17,17 +17,25 @@ import (
 )
 
 // AuthService handles authentication and token generation.
-type AuthService struct {
+type authService struct {
 	store     store.Store
 	log       *zap.Logger
 	jwtSecret []byte
 }
 
-func NewAuthService(s store.Store, log *zap.Logger, jwtSecret string) *AuthService {
+// AuthService defines authentication and token generation operations.
+type AuthService interface {
+	Login(req LoginRequest) (*LoginResult, *Error)
+	Refresh(refreshToken string) (*LoginResult, *Error)
+	ValidateToken(tokenString string) (*Claims, error)
+	ValidateRefreshToken(refreshToken string) (uuid.UUID, error)
+}
+
+func NewAuthService(s store.Store, log *zap.Logger, jwtSecret string) AuthService {
 	if len(jwtSecret) < 32 {
 		log.Fatal("JWT secret must be at least 32 characters")
 	}
-	return &AuthService{store: s, log: log, jwtSecret: []byte(jwtSecret)}
+	return &authService{store: s, log: log, jwtSecret: []byte(jwtSecret)}
 }
 
 // LoginRequest carries credentials from the login endpoint.
@@ -44,7 +52,7 @@ type LoginResult struct {
 }
 
 // Login authenticates a user by email and password.
-func (s *AuthService) Login(req LoginRequest) (*LoginResult, *Error) {
+func (s *authService) Login(req LoginRequest) (*LoginResult, *Error) {
 	var errs validation.Errors
 	validation.NotEmpty(req.Email, "email", "Email", &errs)
 	validation.NotEmpty(req.Password, "password", "Password", &errs)
@@ -60,7 +68,7 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResult, *Error) {
 	}
 
 	// Verify password with bcrypt (constant-time comparison)
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		s.log.Warn("login attempt with wrong password", zap.String("email_hash", hashForLog(req.Email)))
 		return nil, unauthorized("Invalid email or password")
 	}
@@ -87,7 +95,7 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResult, *Error) {
 }
 
 // Refresh authenticates a user by refresh token and returns new tokens.
-func (s *AuthService) Refresh(refreshToken string) (*LoginResult, *Error) {
+func (s *authService) Refresh(refreshToken string) (*LoginResult, *Error) {
 	userID, err := s.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		return nil, unauthorized("Invalid or expired refresh token")
@@ -133,7 +141,7 @@ type Claims struct {
 }
 
 // ValidateToken validates a bearer token and returns the claims.
-func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
+func (s *authService) ValidateToken(tokenString string) (*Claims, error) {
 	// Parse and validate JWT
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -152,16 +160,23 @@ func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, unauthorized("Invalid token")
 	}
 
-	_, err = uuid.Parse(claims.UserID)
+	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
 		return nil, unauthorized("Invalid token user ID format")
+	}
+
+	// Verify user exists and is active
+	_, err = s.store.Users().GetByID(userID)
+	if err != nil {
+		s.log.Warn("token validation failed: user not found", zap.String("user_id", userID.String()))
+		return nil, unauthorized("User not found or inactive")
 	}
 
 	return claims, nil
 }
 
 // generateJWT creates a signed JWT access token
-func (s *AuthService) generateJWT(userID uuid.UUID, email string, expiry time.Duration) (string, error) {
+func (s *authService) generateJWT(userID uuid.UUID, email string, expiry time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID: userID.String(),
@@ -179,7 +194,7 @@ func (s *AuthService) generateJWT(userID uuid.UUID, email string, expiry time.Du
 }
 
 // generateRefreshToken creates a JWT refresh token
-func (s *AuthService) generateRefreshToken(userID uuid.UUID) (string, error) {
+func (s *authService) generateRefreshToken(userID uuid.UUID) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID: userID.String(),
@@ -197,7 +212,7 @@ func (s *AuthService) generateRefreshToken(userID uuid.UUID) (string, error) {
 }
 
 // ValidateRefreshToken validates a refresh token and returns the user ID
-func (s *AuthService) ValidateRefreshToken(refreshToken string) (uuid.UUID, error) {
+func (s *authService) ValidateRefreshToken(refreshToken string) (uuid.UUID, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -231,7 +246,7 @@ func (s *AuthService) ValidateRefreshToken(refreshToken string) (uuid.UUID, erro
 }
 
 // getJWTSecret returns the JWT signing secret
-func (s *AuthService) getJWTSecret() []byte {
+func (s *authService) getJWTSecret() []byte {
 	return s.jwtSecret
 }
 

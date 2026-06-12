@@ -3,7 +3,7 @@
 ## Base URL
 ```
 Production: https://api.ai-software-factory.com/v1
-Development: http://localhost:3001/v1
+Development: http://localhost:8080/v1
 ```
 
 ## Authentication

@@ -49,7 +49,7 @@ check_docker() {
     return 0
   fi
 
-  for svc in api frontend; do
+  for svc in api frontend redis db; do
     local id
     id=$(docker compose ps -q "$svc" 2>/dev/null || true)
     if [ -z "$id" ]; then

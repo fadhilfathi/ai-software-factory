@@ -10,8 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
 - *Placeholder for upcoming features.*
+
+---
+
+## [1.1.0] — 2026-06-12
+
+### Added
+- **Kanban Module** — Fully integrated Kanban board with drag-and-drop support using `@dnd-kit`.
+- **Authentication RBAC** — New `RequireRole` middleware to support role-based access control.
+- **Redis Revocation Store** — Persistent store for refresh token revocation (WIP).
+- **Agent Badge Component** — Visual indicator for different agent types in the frontend.
+- **Task Detail Modal** — Detailed view for tasks accessible from the Kanban board.
+- **Agent Registry Backend** — Heartbeat monitoring, task lifecycle management, and performance tracking.
+- **Audit Log Infrastructure** — Persistent PostgreSQL store for all security-sensitive actions.
+
+### Changed
+- **Backend Framework** — Migrated from standard `net/http` to **Gin** for improved performance and middleware support.
+- **Go Version** — Upgraded runtime to **Go 1.25+**.
+- **Auth Architecture** — Refactored `AuthService` into an interface for better testability and enhanced `ValidateToken` to verify user status on every request.
+- **Frontend Stack** — Upgraded to **Next.js 16** (React 19) and **Tailwind CSS 4**.
+- **Documentation** — Comprehensive refinement of `api-spec.md`, `architecture.md`, and `developer-guide.md`. Added `docs/security.md`.
+
+### Fixed
+- **Kanban Sync** — Implemented optimistic UI updates with automatic rollback on API failure for smoother drag-and-drop experience.
+- **Port Consistency** — Standardized API port to `8080` across all documentation and Docker configurations.
 
 ---
 

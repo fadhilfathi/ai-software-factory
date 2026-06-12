@@ -30,14 +30,15 @@ const (
 
 // Task represents a unit of work within a project.
 type Task struct {
-	ID          uuid.UUID    `json:"id"`
-	ProjectID   uuid.UUID    `json:"project_id"`
-	Title       string       `json:"title"`
-	Description string       `json:"description,omitempty"`
-	Status      TaskStatus   `json:"status"`
-	Priority    TaskPriority `json:"priority"`
-	AssigneeID  uuid.UUID    `json:"assignee_id,omitempty"`
-	Position    int          `json:"position,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID              uuid.UUID    `json:"id"`
+	ProjectID       uuid.UUID    `json:"project_id"`
+	Title           string       `json:"title"`
+	Description     string       `json:"description,omitempty"`
+	Status          TaskStatus   `json:"status"`
+	Priority        TaskPriority `json:"priority"`
+	AssigneeID      uuid.UUID    `json:"assignee_id,omitempty"`
+	AssigneeAgentID string       `json:"assignee_agent_id,omitempty"`
+	Position        int          `json:"position,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }

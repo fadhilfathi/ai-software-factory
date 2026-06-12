@@ -38,6 +38,7 @@ type ProjectStore interface {
 type ProjectFilter struct {
 	Status  model.ProjectStatus
 	OwnerID uuid.UUID
+	Search  string
 	Page    int
 	Limit   int
 }
@@ -54,8 +55,54 @@ type AgentStore interface {
 // AgentFilter holds optional query parameters for listing agents.
 type AgentFilter struct {
 	ProjectID uuid.UUID
+	Status    model.AgentStatus
+	Type      string
+	Role      string
 	Page      int
 	Limit     int
+}
+
+// ExecutionStore defines persistence operations for executions.
+type ExecutionStore interface {
+	Create(exec *model.Execution) error
+	GetByID(id uuid.UUID) (*model.Execution, error)
+	List(filter ExecutionFilter) ([]*model.Execution, int, error)
+	Update(exec *model.Execution) error
+}
+
+// ExecutionFilter holds optional query parameters for listing executions.
+type ExecutionFilter struct {
+	TaskID  uuid.UUID
+	AgentID uuid.UUID
+	Status  string
+	Page    int
+	Limit   int
+}
+
+// AgentRunStore defines persistence operations for agent runs.
+type AgentRunStore interface {
+	Create(run *model.AgentRun) error
+	GetByID(id uuid.UUID) (*model.AgentRun, error)
+	List(filter AgentRunFilter) ([]*model.AgentRun, int, error)
+	Update(run *model.AgentRun) error
+}
+
+// AgentRunFilter holds optional query parameters for listing agent runs.
+type AgentRunFilter struct {
+	AgentID uuid.UUID
+	TaskID  uuid.UUID
+	Status  string
+	Page    int
+	Limit   int
+}
+
+// DeliverableStore defines persistence operations for deliverables.
+type DeliverableStore interface {
+	Create(d *model.Deliverable) error
+	GetByID(id uuid.UUID) (*model.Deliverable, error)
+	Update(d *model.Deliverable) error
+	ListByTask(taskID uuid.UUID) ([]*model.Deliverable, error)
+	ListByAgent(agentID uuid.UUID) ([]*model.Deliverable, error)
 }
 
 // TaskStore defines persistence operations for tasks.
@@ -117,6 +164,21 @@ type WebhookStore interface {
 	Delete(id uuid.UUID) error
 }
 
+// AuditLogStore defines persistence operations for audit logs.
+type AuditLogStore interface {
+	Create(log *model.AuditLog) error
+	List(filter AuditLogFilter) ([]*model.AuditLog, int, error)
+}
+
+// AuditLogFilter holds optional query parameters for listing audit logs.
+type AuditLogFilter struct {
+	EntityType string
+	EntityID   uuid.UUID
+	UserID     uuid.UUID
+	Page       int
+	Limit      int
+}
+
 // Pagination holds pagination metadata for list responses.
 type Pagination struct {
 	Page  int `json:"page"`
@@ -130,9 +192,13 @@ type Store interface {
 	Users() UserStore
 	Projects() ProjectStore
 	Agents() AgentStore
+	AgentRuns() AgentRunStore
+	Executions() ExecutionStore
+	Deliverables() DeliverableStore
 	Tasks() TaskStore
 	Code() CodeStore
 	Reviews() ReviewStore
 	Deployments() DeploymentStore
 	Webhooks() WebhookStore
+	AuditLogs() AuditLogStore
 }

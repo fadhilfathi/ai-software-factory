@@ -9,7 +9,7 @@ WORKDIR /build
 
 # Cache module downloads first (layer stays cached unless go.mod changes)
 COPY go.mod ./
-RUN go mod download 2>/dev/null; exit 0
+RUN go mod download
 
 # Copy source and build a static binary
 COPY . .

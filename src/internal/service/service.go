@@ -7,28 +7,37 @@ import (
 )
 
 type Services struct {
-	Auth       *AuthService
-	User       *UserService
-	Project    *ProjectService
-	Agent      *AgentService
-	Task       *TaskService
-	Code       *CodeService
-	Review     *ReviewService
-	Deployment *DeploymentService
-	Webhook    *WebhookService
+	Auth        AuthService
+	User        *UserService
+	Project     *ProjectService
+	Agent       *AgentService
+	Task        *TaskService
+	Code        *CodeService
+	Review      *ReviewService
+	Deployment  *DeploymentService
+	Webhook     *WebhookService
+	Assignment  *AssignmentService
+	Execution   *ExecutionService
+	Deliverable *DeliverableService
+	AuditLog    *AuditLogService
 }
 
 func New(s store.Store, log *zap.Logger, jwtSecret string) *Services {
+	capSvc := NewCapabilityService()
 	return &Services{
-		Auth:       NewAuthService(s, log, jwtSecret),
-		User:       NewUserService(s, log),
-		Project:    NewProjectService(s, log),
-		Agent:      NewAgentService(s, log),
-		Task:       NewTaskService(s, log),
-		Code:       NewCodeService(s, log),
-		Review:     NewReviewService(s, log),
-		Deployment: NewDeploymentService(s, log),
-		Webhook:    NewWebhookService(s, log),
+		Auth:        NewAuthService(s, log, jwtSecret),
+		User:        NewUserService(s, log),
+		Project:     NewProjectService(s, log),
+		Agent:       NewAgentService(s, log),
+		Task:        NewTaskService(s, log),
+		Code:        NewCodeService(s, log),
+		Review:      NewReviewService(s, log),
+		Deployment:  NewDeploymentService(s, log),
+		Webhook:     NewWebhookService(s, log),
+		Assignment:  NewAssignmentService(s, capSvc, log),
+		Execution:   NewExecutionService(s, log),
+		Deliverable: NewDeliverableService(s, log),
+		AuditLog:    NewAuditLogService(s, log),
 	}
 }
 
@@ -46,13 +55,6 @@ var validTaskPriorities = []string{
 	string(model.PriorityMedium),
 	string(model.PriorityHigh),
 	string(model.PriorityCritical),
-}
-
-var validAgentTypes = []string{
-	string(model.AgentPM),
-	string(model.AgentDev),
-	string(model.AgentReviewer),
-	string(model.AgentDevOps),
 }
 
 var validDeploymentEnvironments = []string{

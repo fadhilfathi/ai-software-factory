@@ -22,9 +22,10 @@ func NewProjectHandler(svc *service.ProjectService) *ProjectHandler {
 }
 
 type createProjectRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Template    string `json:"template"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Template    string      `json:"template"`
+	Agents      []uuid.UUID `json:"agents"`
 }
 
 type updateProjectRequest struct {
@@ -34,14 +35,15 @@ type updateProjectRequest struct {
 }
 
 type projectResponse struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	OwnerID     string `json:"owner_id"`
-	Status      string `json:"status"`
-	Progress    int    `json:"progress,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	OwnerID      string `json:"owner_id"`
+	Status       string `json:"status"`
+	Progress     int    `json:"progress,omitempty"`
+	ActiveAgents int    `json:"active_agents"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 func (h *ProjectHandler) Create(c *gin.Context) {
@@ -67,6 +69,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		Description: req.Description,
 		Template:    req.Template,
 		OwnerID:     ownerID,
+		Agents:      req.Agents,
 	})
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
@@ -81,8 +84,9 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 
 	filter := store.ProjectFilter{
-		Page:  page,
-		Limit: limit,
+		Page:   page,
+		Limit:  limit,
+		Search: c.Query("search"),
 	}
 	if s := c.Query("status"); s != "" {
 		filter.Status = model.ProjectStatus(s)
@@ -188,13 +192,14 @@ func (h *ProjectHandler) Decompose(c *gin.Context) {
 
 func toProjectResponse(p *model.Project) projectResponse {
 	return projectResponse{
-		ID:          p.ID.String(),
-		Name:        p.Name,
-		Description: p.Description,
-		OwnerID:     p.OwnerID.String(),
-		Status:      string(p.Status),
-		Progress:    p.Progress,
-		CreatedAt:   p.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   p.UpdatedAt.Format(time.RFC3339),
+		ID:           p.ID.String(),
+		Name:         p.Name,
+		Description:  p.Description,
+		OwnerID:      p.OwnerID.String(),
+		Status:       string(p.Status),
+		Progress:     p.Progress,
+		ActiveAgents: p.ActiveAgents,
+		CreatedAt:    p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    p.UpdatedAt.Format(time.RFC3339),
 	}
 }

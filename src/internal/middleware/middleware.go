@@ -27,7 +27,7 @@ type isPublicPath func(c *gin.Context) bool
 
 // Auth provides JWT and API Key authentication.
 // Pass publicRoutes to exempt specific routes (e.g. login, register, healthz).
-func Auth(authService *service.AuthService, publicPaths isPublicPath) gin.HandlerFunc {
+func Auth(authService service.AuthService, publicPaths isPublicPath) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if publicPaths(c) {
 			c.Next()
@@ -36,35 +36,60 @@ func Auth(authService *service.AuthService, publicPaths isPublicPath) gin.Handle
 
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "UNAUTHORIZED", "message": "Missing Authorization header"}})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"code": "UNAUTHORIZED", "message": "Missing Authorization header"},
+			})
 			return
 		}
 
-		var userID string
-		var role string
-		if strings.HasPrefix(auth, "Bearer ") {
-			token := strings.TrimPrefix(auth, "Bearer ")
-			// API key pattern: ak_...
-			if strings.HasPrefix(token, "ak_") {
-				userID = "api_user"
-				role = "api_user"
-			} else {
-				// Validate JWT using AuthService
-				claims, err := authService.ValidateToken(token)
-				if err != nil {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "UNAUTHORIZED", "message": "Invalid or expired token"}})
-					return
-				}
-				userID = claims.UserID
-				role = claims.Role
-			}
-		} else {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "UNAUTHORIZED", "message": "Invalid authorization scheme"}})
+		if !strings.HasPrefix(auth, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"code": "UNAUTHORIZED", "message": "Invalid authorization scheme, expected Bearer <token>"},
+			})
 			return
 		}
 
-		c.Set(UserIDKey, userID)
-		c.Set(RoleKey, role)
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"code": "UNAUTHORIZED", "message": "Missing token"},
+			})
+			return
+		}
+
+		// API key pattern: ak_...
+		if strings.HasPrefix(token, "ak_") {
+			c.Set(UserIDKey, "api_user")
+			c.Set(RoleKey, "api_user")
+			c.Next()
+			return
+		}
+
+		// Validate JWT using AuthService
+		claims, err := authService.ValidateToken(token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"code": "UNAUTHORIZED", "message": "Invalid or expired token"},
+			})
+			return
+		}
+
+		c.Set(UserIDKey, claims.UserID)
+		c.Set(RoleKey, claims.Role)
+		c.Next()
+	}
+}
+
+// RequireRole ensures the authenticated user has the required role.
+func RequireRole(requiredRole string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get(RoleKey)
+		if !exists || role != requiredRole {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": gin.H{"code": "FORBIDDEN", "message": "Insufficient permissions"},
+			})
+			return
+		}
 		c.Next()
 	}
 }

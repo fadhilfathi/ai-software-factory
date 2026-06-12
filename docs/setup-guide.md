@@ -9,7 +9,7 @@
 | Tool | Version | Required For |
 |------|---------|--------------|
 | Docker | 24+ | Full stack (recommended) |
-| Go | 1.22+ | Backend native development |
+| Go | 1.25+ | Backend native development |
 | Node.js | 22+ | Frontend native development |
 | Git | 2.40+ | Version control |
 

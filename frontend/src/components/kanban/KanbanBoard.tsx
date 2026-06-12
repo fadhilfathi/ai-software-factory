@@ -16,6 +16,7 @@ import type { Task, TaskStatus } from "@/lib/types";
 import { KanbanColumn } from "./KanbanColumn";
 import { TaskCard } from "./TaskCard";
 import { AddTaskDialog } from "./AddTaskDialog";
+import { TaskDetailModal } from "@/components/modals/TaskDetailModal";
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
   { status: "backlog", title: "Backlog" },
@@ -48,6 +49,7 @@ export function KanbanBoard({
   isSubmitting,
 }: KanbanBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
   const [addDialogColumn, setAddDialogColumn] = useState<TaskStatus | null>(null);
 
   const sensors = useSensors(
@@ -140,6 +142,7 @@ export function KanbanBoard({
                   statusKey={col.status}
                   tasks={columnTasks}
                   onAddTask={() => setAddDialogColumn(col.status)}
+                  onTaskClick={(task) => setViewingTask(task)}
                 />
               </SortableContext>
             );
@@ -164,6 +167,12 @@ export function KanbanBoard({
           }
         }}
         isSubmitting={isSubmitting}
+      />
+
+      <TaskDetailModal
+        task={viewingTask}
+        open={viewingTask !== null}
+        onClose={() => setViewingTask(null)}
       />
     </>
   );

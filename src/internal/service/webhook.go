@@ -10,6 +10,7 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -76,7 +77,7 @@ func (s *WebhookService) RegisterWebhook(req RegisterWebhookRequest) (*model.Web
 	}
 
 	webhook := &model.Webhook{
-		ID:        generateID("wh"),
+		ID:        uuid.New(),
 		URL:       req.URL,
 		Events:    events,
 		Secret:    string(hashedSecret), // bcrypt hash stored

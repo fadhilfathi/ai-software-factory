@@ -12,6 +12,7 @@ type KanbanColumnProps = {
   isOver?: boolean;
   setNodeRef?: (node: HTMLElement | null) => void;
   onAddTask?: () => void;
+  onTaskClick?: (task: Task) => void;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -23,7 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
   blocked: "border-l-red-500",
 };
 
-function SortableTaskCard({ task }: { task: Task }) {
+function SortableTaskCard({ task, onClick }: { task: Task; onClick?: (task: Task) => void }) {
   const {
     attributes,
     listeners,
@@ -39,7 +40,17 @@ function SortableTaskCard({ task }: { task: Task }) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      {...attributes} 
+      {...listeners}
+      onClick={(e) => {
+        // Prevent click if we were dragging
+        if (isDragging) return;
+        onClick?.(task);
+      }}
+    >
       <TaskCard task={task} isDragging={isDragging} />
     </div>
   );
@@ -52,6 +63,7 @@ export function KanbanColumn({
   isOver,
   setNodeRef,
   onAddTask,
+  onTaskClick,
 }: KanbanColumnProps) {
   return (
     <div
@@ -87,7 +99,13 @@ export function KanbanColumn({
         {tasks.length === 0 ? (
           <p className="py-8 text-center text-xs text-gray-600">No tasks</p>
         ) : (
-          tasks.map((task) => <SortableTaskCard key={task.id} task={task} />)
+          tasks.map((task) => (
+            <SortableTaskCard 
+              key={task.id} 
+              task={task} 
+              onClick={onTaskClick}
+            />
+          ))
         )}
       </div>
     </div>

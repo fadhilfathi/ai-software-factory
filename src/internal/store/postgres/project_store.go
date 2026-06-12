@@ -32,11 +32,12 @@ func (s *postgresProjectStore) Create(p *model.Project) error {
 }
 
 func (s *postgresProjectStore) GetByID(id uuid.UUID) (*model.Project, error) {
-	query := `SELECT id, name, description, owner_id, status, template, progress, created_at, updated_at
-		FROM projects WHERE id = $1`
+	query := `SELECT p.id, p.name, p.description, p.owner_id, p.status, p.template, p.progress, p.created_at, p.updated_at,
+		(SELECT COUNT(*) FROM agents a WHERE a.project_id = p.id AND a.status = 'working') as active_agents
+		FROM projects p WHERE p.id = $1`
 	p := &model.Project{}
 	err := s.pool().QueryRow(context.Background(), query, id).Scan(
-		&p.ID, &p.Name, &p.Description, &p.OwnerID, &p.Status, &p.Template, &p.Progress, &p.CreatedAt, &p.UpdatedAt,
+		&p.ID, &p.Name, &p.Description, &p.OwnerID, &p.Status, &p.Template, &p.Progress, &p.CreatedAt, &p.UpdatedAt, &p.ActiveAgents,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, store.ErrNotFound
@@ -62,6 +63,11 @@ func (s *postgresProjectStore) List(filter store.ProjectFilter) ([]*model.Projec
 		args = append(args, filter.OwnerID)
 		argIdx++
 	}
+	if filter.Search != "" {
+		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argIdx, argIdx))
+		args = append(args, "%"+filter.Search+"%")
+		argIdx++
+	}
 
 	whereClause := ""
 	if len(conditions) > 0 {
@@ -84,8 +90,9 @@ func (s *postgresProjectStore) List(filter store.ProjectFilter) ([]*model.Projec
 	}
 
 	offset := (page - 1) * limit
-	dataQuery := fmt.Sprintf(`SELECT id, name, description, owner_id, status, template, progress, created_at, updated_at
-		FROM projects %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, whereClause, argIdx, argIdx+1)
+	dataQuery := fmt.Sprintf(`SELECT p.id, p.name, p.description, p.owner_id, p.status, p.template, p.progress, p.created_at, p.updated_at,
+		(SELECT COUNT(*) FROM agents a WHERE a.project_id = p.id AND a.status = 'working') as active_agents
+		FROM projects p %s ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d`, whereClause, argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
 	rows, err := s.pool().Query(context.Background(), dataQuery, args...)
@@ -97,7 +104,7 @@ func (s *postgresProjectStore) List(filter store.ProjectFilter) ([]*model.Projec
 	var projects []*model.Project
 	for rows.Next() {
 		p := &model.Project{}
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.OwnerID, &p.Status, &p.Template, &p.Progress, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.OwnerID, &p.Status, &p.Template, &p.Progress, &p.CreatedAt, &p.UpdatedAt, &p.ActiveAgents); err != nil {
 			return nil, 0, fmt.Errorf("scan project: %w", err)
 		}
 		projects = append(projects, p)

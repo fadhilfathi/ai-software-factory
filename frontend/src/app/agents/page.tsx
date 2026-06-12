@@ -1,247 +1,170 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useAgents, useProjects } from "@/lib/hooks";
-import { timeAgo, cn } from "@/lib/utils";
+import { useAgents } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBlock } from "@/components/ui/ErrorBlock";
-import { AgentStatusBadge } from "@/components/shared/StatusBadge";
-import { FilterBar } from "@/components/shared/FilterBar";
-import type { Agent } from "@/lib/types";
+import { FilterBar, SearchInput } from "@/components/shared/FilterBar";
+import { MetricCard } from "@/components/shared/MetricCard";
+import { AgentCard } from "@/components/agents/AgentCard";
+import type { AgentStatus_ } from "@/lib/types";
 
-const AGENT_ICONS: Record<string, string> = {
-  pm: "🎯",
-  developer: "💻",
-  reviewer: "🔍",
-  devops: "⚙️",
-};
+const ROLE_TABS = [
+  { value: "all", label: "All Agents", icon: "🤖" },
+  { value: "pm", label: "PM", color: "#10b981" },
+  { value: "architect", label: "Architect", color: "#0ea5e9" },
+  { value: "developer", label: "Developer", color: "#6366f1" },
+  { value: "reviewer", label: "Review", color: "#f97316" },
+  { value: "qa", label: "QA", color: "#ec4899" },
+  { value: "devops", label: "DevOps", color: "#8b5cf6" },
+];
 
-const AGENT_NAMES: Record<string, string> = {
-  pm: "Project Manager",
-  developer: "Developer",
-  reviewer: "Reviewer",
-  devops: "DevOps",
-};
+export default function AgentDashboardPage() {
+  const [activeTab, setActiveTab] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
 
-export default function AgentPerformancePage() {
-  const { data: agents, isLoading, isError, error } = useAgents();
-  const { data: projectsData } = useProjects({ limit: "100" });
-  const [selected, setSelected] = useState<Agent | null>(null);
-  const [projectFilter, setProjectFilter] = useState("");
+  const filters: Record<string, string | undefined> = {};
+  if (statusFilter) filters.status = statusFilter;
+  if (activeTab !== "all") filters.role = activeTab;
+  if (search) filters.search = search;
+  filters.limit = "24";
 
-  const projects = projectsData?.data ?? [];
-  const projectMap = new Map(projects.map((p) => [p.id, p.name]));
+  const { data, isLoading, isError, error } = useAgents(filters);
+  const agents = data?.data ?? [];
 
-  const filteredAgents = agents
-    ? projectFilter
-      ? agents.filter((a) => a.project_id === projectFilter)
-      : agents
-    : [];
-
-  const handleSelect = (agent: Agent) => {
-    setSelected((prev) => (prev?.id === agent.id ? null : agent));
-  };
-
-  const projectOptions = projects.map((p) => ({
-    value: p.id,
-    label: p.name,
-  }));
+  // Summary stats (mocked or derived if available)
+  const totalTasks = agents.reduce((acc, a) => acc + (a.tasks_completed ?? 0), 0);
+  const activeCount = agents.filter(a => a.status === "working").length;
 
   return (
-    <div>
-      <PageHeader title="Agent Performance" />
+    <div className="space-y-8">
+      <PageHeader
+        title="Agent Registry"
+        subtitle="Real-time monitoring and management of the factory's AI workforce."
+        actions={
+          <Link
+            href="/agents/new"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+          >
+            + Spawn New Agent
+          </Link>
+        }
+      />
 
-      {/* Filters */}
+      {/* Global Metrics */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard 
+          label="Total Agents" 
+          value={agents.length} 
+          trend="+2 this week" 
+          trendUp 
+        />
+        <MetricCard 
+          label="Active Now" 
+          value={activeCount} 
+          trend="85% utilization" 
+          trendNeutral 
+        />
+        <MetricCard 
+          label="Tasks Completed" 
+          value={totalTasks} 
+          trend="↑ 12% vs last week" 
+          trendUp 
+        />
+        <MetricCard 
+          label="Avg Cost/Task" 
+          value="$0.42" 
+          trend="↓ $0.05 saved" 
+          trendUp 
+        />
+      </div>
+
+      {/* Agent Role Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-800 pb-px">
+        {ROLE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveTab(tab.value)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all border-b-2",
+              activeTab === tab.value
+                ? "border-emerald-500 text-emerald-400 bg-emerald-500/5"
+                : "border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-900/40"
+            )}
+          >
+            {tab.color && (
+              <div 
+                className="h-2 w-2 rounded-full" 
+                style={{ backgroundColor: tab.color }} 
+              />
+            )}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search & Filters */}
       <FilterBar>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search agents by name or model..."
+          className="flex-1"
+        />
         <FilterBar.Select
-          value={projectFilter}
-          onChange={setProjectFilter}
-          options={projectOptions}
-          placeholder="All Projects"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: "idle", label: "Idle Only" },
+            { value: "working", label: "Working Only" },
+            { value: "failed", label: "Failed/Error" },
+          ]}
+          placeholder="All Statuses"
         />
       </FilterBar>
 
-      {/* Error State */}
       {isError && (
         <ErrorBlock
           message={(error as Error)?.message ?? "Unknown error"}
-          title="Failed to load agents"
-          className="mb-6"
+          title="Failed to load agent registry"
         />
       )}
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="animate-pulse rounded-lg border border-gray-800 bg-gray-950 p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gray-800" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-4 w-24 rounded bg-gray-800" />
-                  <div className="h-3 w-16 rounded bg-gray-800" />
-                </div>
-              </div>
-              <div className="mt-3 space-y-2">
-                <div className="h-1.5 rounded-full bg-gray-800" />
-                <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="h-8 rounded bg-gray-800" />
-                  ))}
-                </div>
-              </div>
-            </div>
+      {/* Agents Grid */}
+      {isLoading ? (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : agents.length === 0 ? (
+        <EmptyState
+          icon="🤖"
+          title="No agents found in the registry"
+          description="Try adjusting your filters or spawn a new agent to expand the workforce."
+        />
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {agents.map((agent) => (
+            <AgentCard key={agent.id} agent={agent} />
           ))}
         </div>
       )}
 
-      {/* Empty State */}
-      {!isLoading && !isError && filteredAgents.length === 0 && (
-        <EmptyState
-          icon="🤖"
-          title="No agents"
-          description={
-            projectFilter
-              ? "No agents assigned to this project."
-              : "No agents have been spawned yet."
-          }
-        />
-      )}
-
-      {/* Agent Cards Grid */}
-      {!isLoading && !isError && filteredAgents.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredAgents.map((agent) => {
-            const uptimeHours = agent.uptime ? Math.floor(agent.uptime / 3600) : 0;
-            const utilization = agent.tasks_completed
-              ? Math.min(Math.round((agent.tasks_completed / (agent.tasks_completed + 3)) * 100), 100)
-              : 0;
-
-            return (
-              <button
-                key={agent.id}
-                onClick={() => handleSelect(agent)}
-                className={cn(
-                  "rounded-lg border p-4 text-left transition-all",
-                  selected?.id === agent.id
-                    ? "border-emerald-500 bg-emerald-500/5"
-                    : "border-gray-800 bg-gray-950 hover:border-gray-700",
-                )}
-                type="button"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-lg">
-                    {AGENT_ICONS[agent.type] ?? "🤖"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-200 truncate">
-                      {AGENT_NAMES[agent.type] ?? agent.type}
-                    </p>
-                    <p className="text-xs text-gray-500">@{agent.type}</p>
-                  </div>
-                  <div className="ml-auto shrink-0">
-                    <AgentStatusBadge status={agent.status} />
-                  </div>
-                </div>
-
-                {/* Utilization bar */}
-                <div className="mt-3 flex gap-0.5">
-                  {Array.from({ length: 20 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "h-1.5 flex-1 rounded-full",
-                        i / 20 < utilization / 100 ? "bg-emerald-500" : "bg-gray-800",
-                      )}
-                    />
-                  ))}
-                </div>
-
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <p className="text-lg font-bold text-gray-200">{agent.tasks_completed ?? 0}</p>
-                    <p className="text-[10px] text-gray-500">Tasks</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-gray-200">
-                      {uptimeHours > 0 ? `${uptimeHours}h` : "<1h"}
-                    </p>
-                    <p className="text-[10px] text-gray-500">Uptime</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-gray-200">{utilization}%</p>
-                    <p className="text-[10px] text-gray-500">Util.</p>
-                  </div>
-                </div>
-
-                {agent.project_id && (
-                  <p className="mt-2 text-[10px] text-gray-600 truncate">
-                    Project: {projectMap.get(agent.project_id) ?? agent.project_id.slice(0, 8)}
-                  </p>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Detail Panel */}
-      {selected && (
-        <div className="mt-6 rounded-lg border border-gray-800 bg-gray-950 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-200">
-              {AGENT_NAMES[selected.type] ?? selected.type} Details
-            </h3>
-            <AgentStatusBadge status={selected.status} />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-gray-500">Agent ID</p>
-                <p className="text-sm text-gray-200 font-mono">{selected.id}</p>
-              </div>
-              {selected.project_id && (
-                <div>
-                  <p className="text-xs text-gray-500">Project</p>
-                  <p className="text-sm text-gray-200">
-                    {projectMap.get(selected.project_id) ?? selected.project_id}
-                  </p>
-                </div>
-              )}
-              {selected.current_task && (
-                <div>
-                  <p className="text-xs text-gray-500">Current Task</p>
-                  <p className="text-sm text-gray-200">{selected.current_task}</p>
-                </div>
-              )}
-            </div>
-            <div className="space-y-3">
-              {selected.config && (
-                <div>
-                  <p className="text-xs text-gray-500">Model</p>
-                  <p className="text-sm text-gray-200">
-                    {selected.config.model ?? "Default"}
-                  </p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-gray-500">Created</p>
-                <p className="text-sm text-gray-200">{timeAgo(selected.created_at)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Last Updated</p>
-                <p className="text-sm text-gray-200">{timeAgo(selected.updated_at)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Detailed Performance Link */}
+      <div className="flex justify-center pt-8">
+        <Link
+          href="/dashboard"
+          className="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-emerald-500 transition-colors"
+        >
+          View Factory Performance Report &rarr;
+        </Link>
+      </div>
     </div>
   );
 }

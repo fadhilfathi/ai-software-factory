@@ -17,6 +17,14 @@ import type {
   UpdateTaskPayload,
   UpdateTaskStatusPayload,
   Agent,
+  CreateAgentPayload,
+  UpdateAgentPayload,
+  AssignTaskPayload,
+  Execution,
+  Deliverable,
+  CreateDeliverablePayload,
+  UpdateDeliverablePayload,
+  UpdateExecutionStatusPayload,
   DashboardMetrics,
   ActivityItem,
   User,
@@ -186,14 +194,112 @@ export function useDeleteTask() {
   });
 }
 
+/** Backend: POST /v1/tasks/:id/assign */
+export function useAssignTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, ...payload }: { taskId: string } & AssignTaskPayload) =>
+      api.post<Task>(`/v1/tasks/${taskId}/assign`, payload),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(vars.taskId) });
+    },
+  });
+}
+
+/** Backend: GET /v1/executions?task_id=:id */
+export function useTaskExecutions(taskId: string) {
+  return useQuery({
+    queryKey: queryKeys.executions.list({ task_id: taskId }),
+    queryFn: () =>
+      api.get<PaginatedResponse<Execution>>("/v1/executions", { params: { task_id: taskId } }),
+    enabled: !!taskId,
+    select: (res) => res.data,
+  });
+}
+
+/** Backend: GET /v1/deliverables?task_id=:id */
+export function useTaskDeliverables(taskId: string) {
+  return useQuery({
+    queryKey: queryKeys.deliverables.list({ task_id: taskId }),
+    queryFn: () =>
+      api.get<Deliverable[]>("/v1/deliverables", { params: { task_id: taskId } }),
+  });
+}
+
+/** Backend: GET /v1/deliverables/:id */
+export function useDeliverable(id: string) {
+  return useQuery({
+    queryKey: queryKeys.deliverables.detail(id),
+    queryFn: () => api.get<Deliverable>(`/v1/deliverables/${id}`),
+    enabled: !!id,
+  });
+}
+
+/** Backend: POST /v1/deliverables */
+export function useCreateDeliverable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateDeliverablePayload) =>
+      api.post<Deliverable>("/v1/deliverables", payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.deliverables.all });
+    },
+  });
+}
+
+/** Backend: PUT /v1/deliverables/:id */
+export function useUpdateDeliverable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: UpdateDeliverablePayload & { id: string }) =>
+      api.put<Deliverable>(`/v1/deliverables/${id}`, payload),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.deliverables.all });
+      qc.setQueryData(queryKeys.deliverables.detail(data.id), data);
+    },
+  });
+}
+
+/** Backend: GET /v1/executions */
+export function useExecutions(filters?: Record<string, string | undefined>) {
+  return useQuery({
+    queryKey: queryKeys.executions.list(filters),
+    queryFn: () =>
+      api.get<PaginatedResponse<Execution>>("/v1/executions", { params: filters }),
+  });
+}
+
+/** Backend: GET /v1/executions/:id */
+export function useExecution(id: string) {
+  return useQuery({
+    queryKey: queryKeys.executions.detail(id),
+    queryFn: () => api.get<Execution>(`/v1/executions/${id}`),
+    enabled: !!id,
+  });
+}
+
+/** Backend: PATCH /v1/executions/:id/status */
+export function useUpdateExecutionStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: UpdateExecutionStatusPayload & { id: string }) =>
+      api.patch<Execution>(`/v1/executions/${id}/status`, payload),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.executions.all });
+      qc.invalidateQueries({ queryKey: queryKeys.executions.detail(vars.id) });
+    },
+  });
+}
+
 // ─── Agents ──────────────────────────────────────────────────────────────────
 
-/** Backend: GET /v1/agents. Unwraps paginated response into flat array. */
-export function useAgents() {
+/** Backend: GET /v1/agents */
+export function useAgents(filters?: Record<string, string | undefined>) {
   return useQuery({
-    queryKey: queryKeys.agents.list(),
+    queryKey: queryKeys.agents.list(filters),
     queryFn: () =>
-      api.get<PaginatedResponse<Agent>>("/v1/agents").then((res) => res.data),
+      api.get<PaginatedResponse<Agent>>("/v1/agents", { params: filters }),
   });
 }
 
@@ -205,44 +311,54 @@ export function useAgent(id: string) {
   });
 }
 
-/** Backend: POST /v1/agents/spawn */
-export function useCreateAgent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: {
-      type: string;
-      project_id?: string;
-      config?: { model?: string; temperature?: number };
-    }) => api.post<Agent>("/v1/agents/spawn", payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.agents.all });
-    },
-  });
-}
-
 export function useAgentMetrics(filters?: Record<string, string | undefined>) {
   return useQuery({
     queryKey: queryKeys.agents.metrics(filters),
     queryFn: () =>
-      api.get<{ metrics: unknown }>("/v1/agents/metrics", { params: filters }),
+      api.get<{ metrics: any }>("/v1/agents/metrics", { params: filters }),
   });
 }
 
-/** Backend: POST /v1/agents/{id}/assign */
-export function useAssignTask() {
+export function useAgentHistory(agentId: string) {
+  return useQuery({
+    queryKey: queryKeys.agents.history(agentId),
+    queryFn: () =>
+      api.get<PaginatedResponse<any>>(`/v1/agents/${agentId}/history`),
+    enabled: !!agentId,
+  });
+}
+
+/** Backend: POST /v1/agents */
+export function useCreateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      agentId,
-      taskId,
-      priority,
-      context,
-    }: {
-      agentId: string;
-      taskId: string;
-      priority?: string;
-      context?: Record<string, unknown>;
-    }) => api.post(`/v1/agents/${agentId}/assign`, { task_id: taskId, priority, context }),
+    mutationFn: (payload: CreateAgentPayload) =>
+      api.post<Agent>("/v1/agents", payload),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.agents.all });
+      qc.setQueryData(queryKeys.agents.detail(data.id), data);
+    },
+  });
+}
+
+/** Backend: PUT /v1/agents/:id */
+export function useUpdateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: UpdateAgentPayload & { id: string }) =>
+      api.put<Agent>(`/v1/agents/${id}`, payload),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.agents.all });
+      qc.setQueryData(queryKeys.agents.detail(data.id), data);
+    },
+  });
+}
+
+/** Backend: DELETE /v1/agents/:id */
+export function useDeleteAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/v1/agents/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
