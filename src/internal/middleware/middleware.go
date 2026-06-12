@@ -58,9 +58,26 @@ func Auth(authService service.AuthService, publicPaths isPublicPath) gin.Handler
 		}
 
 		// API key pattern: ak_...
+		// F-002 (Sprint 4 security review): replaced the previous
+		// prefix-only bypass. The token is now hashed (sha256 of the
+		// post-`ak_` part) and looked up against the APIKeyStore that
+		// the auth service holds. On any failure (unknown key, revoked
+		// key, expired key, malformed prefix) the request is rejected
+		// with 401. The raw token never touches the context — only
+		// the resolved UserID and Role.
 		if strings.HasPrefix(token, "ak_") {
-			c.Set(UserIDKey, "api_user")
-			c.Set(RoleKey, "api_user")
+			result, apiErr := authService.ValidateAPIKey(c.Request.Context(), token)
+			if apiErr != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": gin.H{
+						"code":    apiErr.Code,
+						"message": apiErr.Message,
+					},
+				})
+				return
+			}
+			c.Set(UserIDKey, result.UserID.String())
+			c.Set(RoleKey, result.Role)
 			c.Next()
 			return
 		}

@@ -1,3 +1,7 @@
+-- KEEP IN SYNC: `role`, `provider`, and `capabilities` types/defaults in this
+-- file must match those in 010_update_agents.sql. Both migrations touch the
+-- same columns; IF NOT EXISTS makes the second a no-op, but the column
+-- type/default must agree so apply order is irrelevant.
 -- Add missing fields to agents table for persistent registry
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS role VARCHAR(255);
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS provider VARCHAR(100);

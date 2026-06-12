@@ -20,6 +20,9 @@ FROM node:22-alpine AS runner
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
+# wget is required by the HEALTHCHECK below.
+RUN apk add --no-cache wget
+
 WORKDIR /app
 
 # Only what's needed at runtime

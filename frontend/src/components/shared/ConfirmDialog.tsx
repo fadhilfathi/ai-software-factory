@@ -8,10 +8,20 @@ type ConfirmDialogProps = {
   onConfirm: () => void;
   onCancel: () => void;
   title: string;
-  message: string;
+  message?: string;
+  /**
+   * Alias of `message` for Sprint 4 pages that prefer the "description"
+   * naming. If both are given, `message` wins (back-compat).
+   */
+  description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "danger" | "default";
+  /**
+   * Shorthand for `variant="danger"` for the Sprint 4 page styles.
+   * Ignored if `variant` is also given.
+   */
+  destructive?: boolean;
   loading?: boolean;
 };
 
@@ -21,11 +31,15 @@ export function ConfirmDialog({
   onCancel,
   title,
   message,
+  description,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
-  variant = "default",
+  variant,
+  destructive,
   loading = false,
 }: ConfirmDialogProps) {
+  const text = message ?? description;
+  const resolvedVariant = variant ?? (destructive ? "danger" : "default");
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,7 +54,7 @@ export function ConfirmDialog({
   if (!open) return null;
 
   const confirmStyles =
-    variant === "danger"
+    resolvedVariant === "danger"
       ? "bg-red-500 text-white hover:bg-red-600"
       : "bg-emerald-500 text-white hover:bg-emerald-600";
 
@@ -53,7 +67,7 @@ export function ConfirmDialog({
         className="mx-4 w-full max-w-md rounded-lg border border-gray-800 bg-gray-950 p-6 shadow-xl"
       >
         <h3 className="text-lg font-semibold text-gray-200">{title}</h3>
-        <p className="mt-2 text-sm text-gray-400">{message}</p>
+        <p className="mt-2 text-sm text-gray-400">{text}</p>
         <div className="mt-6 flex justify-end gap-3">
           <button
             onClick={onCancel}

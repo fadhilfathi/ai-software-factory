@@ -3,18 +3,26 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type ErrorBlockProps = {
-  message: string;
+  message?: string;
+  error?: Error | null;
   title?: string;
   actions?: ReactNode;
+  onRetry?: () => void;
   className?: string;
 };
 
 export function ErrorBlock({
   message,
+  error,
   title,
   actions,
+  onRetry,
   className,
 }: ErrorBlockProps) {
+  // Resolve message in order: explicit `message` prop → `error.message`
+  // → generic fallback. The fallback keeps `message` optional in the
+  // type while still always showing something to the user.
+  const resolved = message ?? error?.message ?? "An unexpected error occurred.";
   return (
     <div
       className={cn(
@@ -25,8 +33,19 @@ export function ErrorBlock({
       {title && (
         <p className="mb-1 text-sm font-semibold text-red-400">{title}</p>
       )}
-      <p className="text-sm text-red-400/90">{message}</p>
-      {actions && <div className="mt-3 flex gap-2">{actions}</div>}
+      <p className="text-sm text-red-400/90">{resolved}</p>
+      <div className="mt-3 flex gap-2">
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-md border border-red-700 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/30"
+          >
+            Retry
+          </button>
+        ) : null}
+        {actions}
+      </div>
     </div>
   );
 }

@@ -186,7 +186,7 @@ CREATE TABLE agents (
     status VARCHAR(50) DEFAULT 'spawning',
     model VARCHAR(100),
     provider VARCHAR(50),
-    capabilities TEXT[],
+    capabilities JSONB DEFAULT '[]'::jsonb,
     config JSONB DEFAULT '{}',
     current_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
     tasks_done INTEGER DEFAULT 0,

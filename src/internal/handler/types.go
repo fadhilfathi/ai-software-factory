@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
@@ -74,4 +75,26 @@ func writeServiceError(c *gin.Context, err *service.Error) {
 	} else {
 		writeError(c, err.Status, err.Code, err.Message)
 	}
+}
+
+// isMaxBytesError reports whether err originated from an
+// http.MaxBytesReader trip. The Go 1.20+ stdlib returns the
+// concrete *http.MaxBytesError type from a Read past the cap;
+// json.Decoder surfaces that error verbatim via Unmarshal, and
+// Gin's c.ShouldBindJSON forwards it unchanged. We also fall
+// back to errors.As in case future stdlib versions wrap the
+// error.
+//
+// Added in TASK-424 (F-023). The deliverable handler uses
+// this to map an oversize request body to 413
+// PAYLOAD_TOO_LARGE instead of the generic 400 INVALID_JSON.
+func isMaxBytesError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return true
+	}
+	return false
 }

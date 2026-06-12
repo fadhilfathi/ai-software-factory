@@ -1,224 +1,310 @@
 package handler
 
+// Agent HTTP handlers (TASK-402, Sprint 4).
+//
+// Wire-up: docs/sprint4/api-spec.md §1 (1.1-1.6) and §2.1.
+//
+// All handlers:
+//   - Read project_id from the URL path or the auth context.
+//   - Wire query parameters with api-spec defaults applied by the
+//     service layer (cursor pagination: default 50, max 200; default
+//     list excludes retired; pass ?include_retired=true to include).
+//   - Map service errors to the api-spec.md §0.4 error envelope
+//     `{"error": {"code", "message", "details"}, "request_id"}`.
+
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
-	"time"
+	"strings"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
-	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
+// AgentHandler is the Gin-bound agent HTTP handler. It depends on the
+// AgentService interface, not the concrete impl, so it can be tested
+// with a mock service.
 type AgentHandler struct {
-	svc *service.AgentService
+	svc service.AgentService
 }
 
-func NewAgentHandler(svc *service.AgentService) *AgentHandler {
+// NewAgentHandler wires the handler. The svc parameter is the
+// interface (service.AgentService), not the pointer — the existing
+// router registers it as a pointer for symmetry with other handlers.
+func NewAgentHandler(svc service.AgentService) *AgentHandler {
 	return &AgentHandler{svc: svc}
 }
 
+// --- Request / response shapes (the JSON wire format) ------------------
+
+// createAgentRequest is the body of POST /v1/agents. ProjectID is
+// pulled from the URL or auth context, not the body, so the same
+// shape works for all 5 endpoints.
 type createAgentRequest struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Role         string   `json:"role"`
-	Model        string   `json:"model"`
-	Provider     string   `json:"provider"`
-	Capabilities []string `json:"capabilities"`
+	Name         string          `json:"name"`
+	Role         string          `json:"role"`
+	Capabilities []string        `json:"capabilities"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
 }
 
+// updateAgentRequest is the body of PUT /v1/agents/:id. Pointer
+// fields encode "absent" vs "present" so partial updates work
+// cleanly.
 type updateAgentRequest struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Role         string   `json:"role"`
-	Model        string   `json:"model"`
-	Provider     string   `json:"provider"`
-	Capabilities []string `json:"capabilities"`
-	Status       string   `json:"status"`
+	Role         *string             `json:"role,omitempty"`
+	Status       *model.AgentStatus  `json:"status,omitempty"`
+	Capabilities *[]string           `json:"capabilities,omitempty"`
+	Metadata     json.RawMessage     `json:"metadata,omitempty"`
+	Version      *int                `json:"version"`
 }
 
+// agentResponse is the canonical wire format for a single agent
+// (api-spec.md §1.1 + §1.3). Every field is exposed; the service
+// returns a model.Agent and we map to this struct so internal
+// renames do not leak into the API.
 type agentResponse struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Type          string   `json:"type"`
-	Role          string   `json:"role"`
-	Model         string   `json:"model"`
-	Provider      string   `json:"provider"`
-	Capabilities  []string `json:"capabilities"`
-	Status        string   `json:"status"`
-	ProjectID     string   `json:"project_id,omitempty"`
-	CurrentTaskID string   `json:"current_task_id,omitempty"`
-	TasksDone     int      `json:"tasks_done"`
-	Uptime        int      `json:"uptime"`
-	CreatedAt     string   `json:"created_at"`
-	UpdatedAt     string   `json:"updated_at"`
+	ID           string          `json:"id"`
+	ProjectID    string          `json:"project_id"`
+	Name         string          `json:"name"`
+	Role         string          `json:"role"`
+	Status       string          `json:"status"`
+	Capabilities []string        `json:"capabilities"`
+	LastActiveAt *string         `json:"last_active_at,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	Version      int             `json:"version"`
+	RetiredAt    *string         `json:"retired_at,omitempty"`
+	CreatedAt    string          `json:"created_at"`
+	UpdatedAt    string          `json:"updated_at"`
 }
+
+func toAgentResponse(a *model.Agent) agentResponse {
+	r := agentResponse{
+		ID:           a.ID.String(),
+		ProjectID:    a.ProjectID.String(),
+		Name:         a.Name,
+		Role:         a.Role,
+		Status:       string(a.Status),
+		Capabilities: a.Capabilities,
+		Version:      a.Version,
+		CreatedAt:    a.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z07:00"),
+		UpdatedAt:    a.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z07:00"),
+	}
+	if a.LastActiveAt != nil {
+		s := a.LastActiveAt.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+		r.LastActiveAt = &s
+	}
+	if a.RetiredAt != nil {
+		s := a.RetiredAt.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+		r.RetiredAt = &s
+	}
+	if len(a.Metadata) > 0 {
+		r.Metadata = a.Metadata
+	}
+	return r
+}
+
+// --- POST /v1/agents ---------------------------------------------------
 
 func (h *AgentHandler) Create(c *gin.Context) {
 	var req createAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		respondError(c, &service.Error{
+			Status:  400,
+			Code:    "VALIDATION_ERROR",
+			Message: "Invalid JSON body: " + err.Error(),
+		})
+		return
+	}
+	projectID, ok := projectIDFromContext(c)
+	if !ok {
+		respondError(c, &service.Error{
+			Status:  400,
+			Code:    "VALIDATION_ERROR",
+			Message: "project_id is required",
+		})
 		return
 	}
 
-	agent, svcErr := h.svc.CreateAgent(c.Request.Context(), service.CreateAgentRequest{
-		Name:         req.Name,
-		Type:         req.Type,
-		Role:         req.Role,
-		Model:        req.Model,
-		Provider:     req.Provider,
+	agent, apiErr := h.svc.CreateAgent(c.Request.Context(), service.CreateAgentRequest{
+		ProjectID:    projectID,
+		Name:         strings.TrimSpace(req.Name),
+		Role:         strings.TrimSpace(req.Role),
 		Capabilities: req.Capabilities,
+		Metadata:     req.Metadata,
 	})
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+	if apiErr != nil {
+		respondError(c, apiErr)
 		return
 	}
-
-	writeJSON(c, http.StatusCreated, toAgentResponse(agent))
+	c.JSON(http.StatusCreated, toAgentResponse(agent))
 }
 
+// --- GET /v1/agents ----------------------------------------------------
+
+// List returns a cursor-paginated page. Query parameters:
+//   - status: exact-match on the lifecycle state
+//   - capability: filter to agents declaring this capability
+//   - include_retired: "true" to include retired agents (default false)
+//   - cursor: opaque cursor from a previous page
+//   - limit: 1-200, default 50
 func (h *AgentHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-
-	filter := store.AgentFilter{
-		Page:  page,
-		Limit: limit,
-	}
-	if s := c.Query("status"); s != "" {
-		filter.Status = model.AgentStatus(s)
-	}
-	if r := c.Query("role"); r != "" {
-		filter.Role = r
-	}
-	if t := c.Query("type"); t != "" {
-		filter.Type = t
-	}
-	if pid := c.Query("project_id"); pid != "" {
-		if u, err := uuid.Parse(pid); err == nil {
-			filter.ProjectID = u
-		}
-	}
-
-	agents, pagination, svcErr := h.svc.ListAgents(c.Request.Context(), filter)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+	projectID, ok := projectIDFromContext(c)
+	if !ok {
+		respondError(c, &service.Error{
+			Status:  400,
+			Code:    "VALIDATION_ERROR",
+			Message: "project_id is required",
+		})
 		return
 	}
 
-	data := make([]agentResponse, len(agents))
-	for i, a := range agents {
-		data[i] = toAgentResponse(a)
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	includeRetired := strings.EqualFold(c.Query("include_retired"), "true")
+
+	res, apiErr := h.svc.ListAgents(c.Request.Context(), service.ListAgentsRequest{
+		ProjectID:      projectID,
+		Status:         c.Query("status"),
+		Capability:     c.Query("capability"),
+		IncludeRetired: includeRetired,
+		Cursor:         c.Query("cursor"),
+		Limit:          limit,
+	})
+	if apiErr != nil {
+		respondError(c, apiErr)
+		return
 	}
 
-	writeJSON(c, http.StatusOK, PaginatedResponse{
-		Data: data,
-		Pagination: Pagination{
-			Page:  pagination.Page,
-			Limit: pagination.Limit,
-			Total: pagination.Total,
-			Pages: pagination.Pages,
+	data := make([]agentResponse, 0, len(res.Data))
+	for _, a := range res.Data {
+		data = append(data, toAgentResponse(a))
+	}
+
+	body := gin.H{
+		"data": data,
+		"pagination": gin.H{
+			"has_more":    res.HasMore,
+			"next_cursor": res.NextCursor,
 		},
-	})
+	}
+	c.JSON(http.StatusOK, body)
 }
+
+// --- GET /v1/agents/:id -----------------------------------------------
 
 func (h *AgentHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		respondError(c, &service.Error{
+			Status:  400, Code: "VALIDATION_ERROR", Message: "Invalid agent id",
+		})
 		return
 	}
-
-	agent, svcErr := h.svc.GetAgent(c.Request.Context(), id)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+	agent, apiErr := h.svc.GetAgent(c.Request.Context(), id)
+	if apiErr != nil {
+		respondError(c, apiErr)
 		return
 	}
-
-	writeJSON(c, http.StatusOK, toAgentResponse(agent))
+	c.JSON(http.StatusOK, toAgentResponse(agent))
 }
+
+// --- PUT /v1/agents/:id -----------------------------------------------
 
 func (h *AgentHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		respondError(c, &service.Error{
+			Status:  400, Code: "VALIDATION_ERROR", Message: "Invalid agent id",
+		})
 		return
 	}
-
 	var req updateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		respondError(c, &service.Error{
+			Status:  400, Code: "VALIDATION_ERROR", Message: "Invalid JSON body: " + err.Error(),
+		})
 		return
 	}
-
-	svcReq := service.UpdateAgentRequest{
-		Name:         req.Name,
-		Type:         req.Type,
+	agent, apiErr := h.svc.UpdateAgent(c.Request.Context(), id, service.UpdateAgentRequest{
 		Role:         req.Role,
-		Model:        req.Model,
-		Provider:     req.Provider,
+		Status:       req.Status,
 		Capabilities: req.Capabilities,
-	}
-	if req.Status != "" {
-		svcReq.Status = model.AgentStatus(req.Status)
-	}
-
-	agent, svcErr := h.svc.UpdateAgent(c.Request.Context(), id, svcReq)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+		Metadata:     req.Metadata,
+		Version:      req.Version,
+	})
+	if apiErr != nil {
+		respondError(c, apiErr)
 		return
 	}
-
-	writeJSON(c, http.StatusOK, toAgentResponse(agent))
+	c.JSON(http.StatusOK, toAgentResponse(agent))
 }
 
-func (h *AgentHandler) Heartbeat(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
-		return
-	}
+// --- DELETE /v1/agents/:id --------------------------------------------
 
-	if svcErr := h.svc.Heartbeat(c.Request.Context(), id); svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
+// Delete is the soft-delete path (api-spec.md §1.5). The
+// ?force=true query parameter is accepted but currently behaves
+// identically to the soft path; future schema-level hard delete can
+// be added without breaking the wire format.
 func (h *AgentHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Agent ID")
+		respondError(c, &service.Error{
+			Status:  400, Code: "VALIDATION_ERROR", Message: "Invalid agent id",
+		})
 		return
 	}
-
-	if svcErr := h.svc.DeleteAgent(c.Request.Context(), id); svcErr != nil {
-		writeServiceError(c, svcErr)
+	force := strings.EqualFold(c.Query("force"), "true")
+	apiErr := h.svc.RetireAgent(c.Request.Context(), id, force)
+	if apiErr != nil {
+		respondError(c, apiErr)
 		return
 	}
-
 	c.Status(http.StatusNoContent)
 }
 
-func toAgentResponse(a *model.Agent) agentResponse {
-	return agentResponse{
-		ID:            a.ID.String(),
-		Name:          a.Name,
-		Type:          a.Type,
-		Role:          a.Role,
-		Model:         a.Model,
-		Provider:      a.Provider,
-		Capabilities:  a.Capabilities,
-		Status:        string(a.Status),
-		ProjectID:     a.ProjectID,
-		CurrentTaskID: a.CurrentTaskID,
-		TasksDone:     a.TasksDone,
-		Uptime:        a.Uptime,
-		CreatedAt:     a.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     a.UpdatedAt.Format(time.RFC3339),
+// --- helpers ----------------------------------------------------------
+
+// projectIDFromContext extracts the project_id from the Gin context.
+// Priority order:
+//   1. Header "X-Project-ID" — the recommended cross-cutting source
+//      for multi-tenant agent operations.
+//   2. URL parameter "project_id" — for any future route nested under
+//      /v1/projects/:project_id/agents/....
+//
+// The "ok" return is false when no source is available; the handler
+// responds 400 with a clear message in that case.
+func projectIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+	if s := c.GetHeader("X-Project-ID"); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			return id, true
+		}
 	}
+	if s := c.Param("project_id"); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			return id, true
+		}
+	}
+	return uuid.Nil, false
+}
+
+// respondError is the canonical error envelope writer. It uses the
+// api-spec.md §0.4 shape `{"error": {"code", "message", "details"},
+// "request_id"}` and pulls the request_id from the Gin context
+// (set by the request-id middleware in cmd/main.go).
+func respondError(c *gin.Context, e *service.Error) {
+	body := gin.H{
+		"error": gin.H{
+			"code":    e.Code,
+			"message": e.Message,
+		},
+	}
+	if len(e.Details) > 0 {
+		body["error"].(gin.H)["details"] = e.Details
+	}
+	if v, exists := c.Get("request_id"); exists {
+		body["request_id"] = v
+	}
+	c.JSON(e.Status, body)
 }

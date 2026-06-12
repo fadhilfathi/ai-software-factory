@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 // AuthService handles authentication and token generation.
 type authService struct {
 	store     store.Store
+	apiKeys   store.APIKeyStore
 	log       *zap.Logger
 	jwtSecret []byte
 }
@@ -30,13 +32,27 @@ type AuthService interface {
 	Logout(refreshToken string) *Error
 	ValidateToken(tokenString string) (*Claims, error)
 	ValidateRefreshToken(refreshToken string) (uuid.UUID, error)
+
+	// ValidateAPIKey looks up an `ak_*` API key by its hash, checks
+	// revocation/expiry, and returns the user identity on success.
+	// Returns ErrUnauthorized on any failure (bad prefix, unknown key,
+	// revoked key, expired key). The middleware uses this to close the
+	// previous prefix-only bypass (F-002).
+	ValidateAPIKey(ctx context.Context, token string) (*ValidateAPIKeyResult, *Error)
 }
 
-func NewAuthService(s store.Store, log *zap.Logger, jwtSecret string) AuthService {
+// ValidateAPIKeyResult is the success payload of ValidateAPIKey. The
+// middleware stamps UserID and Role into the Gin context from this struct.
+type ValidateAPIKeyResult struct {
+	UserID uuid.UUID
+	Role   string
+}
+
+func NewAuthService(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, jwtSecret string) AuthService {
 	if len(jwtSecret) < 32 {
 		log.Fatal("JWT secret must be at least 32 characters")
 	}
-	return &authService{store: s, log: log, jwtSecret: []byte(jwtSecret)}
+	return &authService{store: s, apiKeys: apiKeys, log: log, jwtSecret: []byte(jwtSecret)}
 }
 
 // LoginRequest carries credentials from the login endpoint.
@@ -74,15 +90,15 @@ func (s *authService) Login(req LoginRequest) (*LoginResult, *Error) {
 		return nil, unauthorized("Invalid email or password")
 	}
 
-	// Generate JWT access token
-	accessToken, err := s.generateJWT(user.ID, user.Email, 15*time.Minute)
+	// Generate JWT access token (role is loaded from the user record, not hard-coded)
+	accessToken, err := s.generateJWT(user.ID, string(user.Role), 15*time.Minute)
 	if err != nil {
 		s.log.Error("failed to generate access token", zap.Error(err))
 		return nil, internalError("Failed to generate token")
 	}
 
 	// Generate refresh token (longer expiry, stored for validation)
-	refreshToken, err := s.generateRefreshToken(user.ID)
+	refreshToken, err := s.generateRefreshToken(user.ID, string(user.Role))
 	if err != nil {
 		s.log.Error("failed to generate refresh token", zap.Error(err))
 		return nil, internalError("Failed to generate token")
@@ -114,15 +130,15 @@ func (s *authService) Refresh(refreshToken string) (*LoginResult, *Error) {
 		return nil, unauthorized("User not found")
 	}
 
-	// Generate JWT access token
-	accessToken, err := s.generateJWT(user.ID, user.Email, 15*time.Minute)
+	// Generate JWT access token (role is loaded from the user record, not hard-coded)
+	accessToken, err := s.generateJWT(user.ID, string(user.Role), 15*time.Minute)
 	if err != nil {
 		s.log.Error("failed to generate access token", zap.Error(err))
 		return nil, internalError("Failed to generate token")
 	}
 
 	// Generate new refresh token
-	newRefreshToken, err := s.generateRefreshToken(user.ID)
+	newRefreshToken, err := s.generateRefreshToken(user.ID, string(user.Role))
 	if err != nil {
 		s.log.Error("failed to generate refresh token", zap.Error(err))
 		return nil, internalError("Failed to generate token")
@@ -203,12 +219,64 @@ func (s *authService) ValidateToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// generateJWT creates a signed JWT access token
-func (s *authService) generateJWT(userID uuid.UUID, email string, expiry time.Duration) (string, error) {
+// ValidateAPIKey looks up an `ak_*` API key by its hash, then enforces
+// revocation and expiry checks. Returns ErrUnauthorized on any failure;
+// callers should not distinguish "unknown key" from "revoked" from
+// "expired" externally — they are all the same outcome for the client.
+//
+// F-002 (Sprint 4 security review): replaces the previous prefix-only
+// bypass in middleware.go that accepted any `ak_*` token without
+// validation.
+//
+// Hashing note: only the bytes AFTER the `ak_` prefix are hashed. The
+// raw key is never persisted or logged.
+func (s *authService) ValidateAPIKey(ctx context.Context, token string) (*ValidateAPIKeyResult, *Error) {
+	if !strings.HasPrefix(token, "ak_") {
+		return nil, unauthorized("Invalid API key")
+	}
+	body := strings.TrimPrefix(token, "ak_")
+	if body == "" {
+		return nil, unauthorized("Invalid API key")
+	}
+	sum := sha256.Sum256([]byte(body))
+	hash := hex.EncodeToString(sum[:])
+
+	key, err := s.apiKeys.GetByHash(ctx, hash)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.log.Debug("API key lookup miss", zap.String("hash_prefix", hash[:min(8, len(hash))]))
+		} else {
+			s.log.Error("API key lookup error", zap.Error(err))
+		}
+		return nil, unauthorized("Invalid API key")
+	}
+
+	now := time.Now()
+	if key.RevokedAt != nil {
+		return nil, unauthorized("API key revoked")
+	}
+	if key.ExpiresAt != nil && now.After(*key.ExpiresAt) {
+		return nil, unauthorized("API key expired")
+	}
+
+	// Best-effort LastUsedAt stamp. We mutate a copy to avoid
+	// racing with concurrent readers of the stored entry; the
+	// mutation is intentionally not propagated back to the store —
+	// only Revoke is on the write path right now.
+	stamped := *key
+	stamped.LastUsedAt = &now
+	_ = stamped
+
+	return &ValidateAPIKeyResult{UserID: key.UserID, Role: key.Role}, nil
+}
+
+// generateJWT creates a signed JWT access token.
+// The `role` argument must be loaded from the user record (DB); do not hard-code it.
+func (s *authService) generateJWT(userID uuid.UUID, role string, expiry time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID: userID.String(),
-		Role:   "user", // Defaulting to user; update if role exists in DB
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -221,12 +289,13 @@ func (s *authService) generateJWT(userID uuid.UUID, email string, expiry time.Du
 	return token.SignedString(s.getJWTSecret())
 }
 
-// generateRefreshToken creates a JWT refresh token
-func (s *authService) generateRefreshToken(userID uuid.UUID) (string, error) {
+// generateRefreshToken creates a JWT refresh token.
+// The `role` argument must be loaded from the user record (DB); do not hard-code it.
+func (s *authService) generateRefreshToken(userID uuid.UUID, role string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID: userID.String(),
-		Role:   "user", // Defaulting to user; update if role exists in DB
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),

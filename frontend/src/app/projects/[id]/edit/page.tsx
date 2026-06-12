@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useProject, useUpdateProject } from "@/lib/hooks";
+import type { Project } from "@/lib/types";
 import { Input } from "@/components/form/Input";
 import { Textarea } from "@/components/form/Textarea";
 import { Select } from "@/components/form/Select";
@@ -37,7 +38,7 @@ export default function EditProjectPage({
   if (project && !initialized) {
     setName(project.name ?? "");
     setDescription(project.description ?? "");
-    setTemplate(project.template ?? "");
+    setTemplate((project as { template?: string }).template ?? "");
     setInitialized(true);
   }
 
@@ -53,7 +54,7 @@ export default function EditProjectPage({
         name: name.trim(),
         description: description.trim() || undefined,
         template: template || undefined,
-      });
+      } as Partial<Project> & { id?: string; template?: string });
       router.push(`/projects/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update project");

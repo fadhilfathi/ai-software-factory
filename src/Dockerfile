@@ -22,7 +22,7 @@ RUN CGO_ENABLED=0 go build \
 # =============================================================================
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

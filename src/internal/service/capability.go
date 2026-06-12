@@ -1,14 +1,40 @@
 package service
 
 import (
+	"context"
+	"errors"
+
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // CapabilityService provides capability matching and assignment logic.
-type CapabilityService struct{}
+//
+// The methods on the right (CapabilitiesForRole, TaskRequiresCapability,
+// AgentHasCapability, FindCompatibleAgents, AssignmentScore) are the
+// original pre-Sprint-4 helpers and operate on a snapshot
+// *model.Agent — they are used by AgentOrchestrator for capability
+// discovery and have no database dependency.
+//
+// ValidateAgentHasCapabilities is the Sprint 4 (TASK-403) enforcement
+// seam: it reads the live capability grant set from the agent store
+// (which mirrors the agent_capabilities join table, migration 017)
+// and returns ErrCapabilityMismatch if the agent does not hold every
+// requested capability. AssignmentService calls this before persisting
+// an assignment (api-spec.md §3.1).
+type CapabilityService struct {
+	stores store.Store
+	log    *zap.Logger
+}
 
-func NewCapabilityService() *CapabilityService {
-	return &CapabilityService{}
+// NewCapabilityService wires the live-store dependency required by
+// ValidateAgentHasCapabilities. Pre-Sprint-4 callers that only use
+// the role-snapshot helpers can still call this constructor (the
+// store is only consulted by ValidateAgentHasCapabilities).
+func NewCapabilityService(s store.Store, log *zap.Logger) *CapabilityService {
+	return &CapabilityService{stores: s, log: log}
 }
 
 // CapabilitiesForRole returns the default capabilities for a given role string.
@@ -107,4 +133,71 @@ func (s *CapabilityService) AssignmentScore(agent *model.Agent, required []strin
 	}
 
 	return score
+}
+
+// ValidateAgentHasCapabilities is the Sprint 4 (TASK-403) enforcement
+// seam. It reads the agent's granted capabilities from the store
+// (which mirrors the agent_capabilities join table, migration 017) and
+// returns ErrCapabilityMismatch (mapped to a 409 with code
+// CAPABILITY_MISMATCH per api-spec.md §3.1) if the agent is missing
+// one or more of the required capabilities.
+//
+// Behaviour contract:
+//   - Empty/nil required slice: no-op, returns nil. There is no
+//     constraint, so every agent is eligible.
+//   - Agent not found in the store: returns notFound("agent ...").
+//   - Store error: returns the wrapped error and logs it.
+//   - Missing capabilities: returns ErrCapabilityMismatch with the
+//     missing-names list in Details.
+//
+// This method is called by AssignmentService.AssignTaskToAgent
+// before persisting an assignment. The CapabilityService is also
+// safe to call from other services (e.g. the future Sprint 5
+// task-creation endpoint that pre-validates an agent pick) — it
+// has no side effects.
+func (s *CapabilityService) ValidateAgentHasCapabilities(ctx context.Context, agentID uuid.UUID, required []string) error {
+	// No-op for an empty required list — every agent is eligible.
+	if len(required) == 0 {
+		return nil
+	}
+
+	agents := s.stores.Agents()
+
+	// Read the agent's granted capability set. The store is the
+	// single source of truth for the join table + JSONB cache
+	// (data-model.md §3 invariant), so we do NOT trust any
+	// pre-computed snapshot on the request.
+	granted, err := agents.ListCapabilitiesByAgent(ctx, agentID)
+	if err != nil {
+		// Map store.ErrNotFound to the service-level notFound
+		// envelope so the handler can return a clean 404.
+		if errors.Is(err, store.ErrNotFound) {
+			return notFound("agent " + agentID.String() + " not found")
+		}
+		if s.log != nil {
+			s.log.Error("capability validation: store error",
+				zap.String("agent_id", agentID.String()),
+				zap.Strings("required", required),
+				zap.Error(err))
+		}
+		return internalError("failed to load agent capabilities")
+	}
+
+	// Build a set of granted capability names for O(1) lookup.
+	grantedSet := make(map[string]struct{}, len(granted))
+	for _, c := range granted {
+		grantedSet[c.Name] = struct{}{}
+	}
+
+	// Walk the required list and collect anything missing.
+	var missing []string
+	for _, req := range required {
+		if _, ok := grantedSet[req]; !ok {
+			missing = append(missing, req)
+		}
+	}
+	if len(missing) > 0 {
+		return capabilityMismatch(missing)
+	}
+	return nil
 }

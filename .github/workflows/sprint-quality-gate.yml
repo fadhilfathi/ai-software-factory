@@ -1,0 +1,136 @@
+# =============================================================================
+# Sprint Quality Gate — AI Software Factory
+# =============================================================================
+# Pre-commit quality gate for Sprint 4. Runs on every push to main and every
+# pull request targeting main. Acts as the merge gate for the sprint.
+#
+# All 14 steps must exit 0. On failure, each step prints a `::error::`
+# annotation so the failure shows up in the GitHub Actions UI.
+#
+# This workflow is the source of truth. The same 14 steps are mirrored in
+# scripts/quality-gate.sh for local pre-push verification.
+# =============================================================================
+
+name: Sprint Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs on the same branch when new commits arrive
+# (saves runner minutes on iterative PR work).
+concurrency:
+  group: sprint-quality-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "20"
+
+jobs:
+  quality-gate:
+    name: Sprint 4 Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      # ---------------------------------------------------------------- 1
+      - name: "1/14 — Checkout"
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- 2
+      - name: "2/14 — Set up Go ${{ env.GO_VERSION }}"
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # ---------------------------------------------------------------- 3
+      - name: "3/14 — Set up Node ${{ env.NODE_VERSION }}"
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ---------------------------------------------------------------- 4
+      - name: "4/14 — Cache Go modules + build cache (keyed on go.sum)"
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('src/**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      # ---------------------------------------------------------------- 5
+      - name: "5/14 — Go mod download"
+        working-directory: ./src
+        run: |
+          go mod download || { echo "::error::go mod download failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 6
+      - name: "6/14 — Go vet"
+        working-directory: ./src
+        run: |
+          go vet ./... || { echo "::error::go vet failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 7
+      - name: "7/14 — Go build"
+        working-directory: ./src
+        run: |
+          go build ./... || { echo "::error::go build failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 8
+      - name: "8/14 — Go unit tests (./internal/...)"
+        working-directory: ./src
+        run: |
+          go test -count=1 -timeout 5m ./internal/... || { echo "::error::go test (unit) failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 9
+      - name: "9/14 — docker compose config"
+        run: |
+          docker compose config || { echo "::error::docker compose config failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 10
+      - name: "10/14 — docker compose up -d"
+        run: |
+          docker compose up -d || { echo "::error::docker compose up failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 11
+      - name: "11/14 — Wait for /v1/healthz (up to 120s)"
+        run: |
+          echo "Waiting for stack to become healthy..."
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/v1/healthz >/dev/null 2>&1; then
+              echo "Stack is healthy after ${i} attempt(s)"
+              exit 0
+            fi
+            echo "  attempt $i/60: not ready, sleeping 2s..."
+            sleep 2
+          done
+          echo "::error::Stack did not become healthy within 120s"
+          echo "=== docker compose ps ==="
+          docker compose ps
+          echo "=== docker compose logs (tail 100) ==="
+          docker compose logs --tail=100
+          exit 1
+
+      # ---------------------------------------------------------------- 12
+      - name: "12/14 — curl /v1/healthz"
+        run: |
+          curl -fsS http://localhost:8080/v1/healthz || { echo "::error::curl /v1/healthz failed"; exit 1; }
+
+      # ---------------------------------------------------------------- 13
+      - name: "13/14 — Go integration tests (./internal/integration/...)"
+        working-directory: ./src
+        run: |
+          if [ -d "internal/integration" ]; then
+            go test -count=1 -timeout 10m ./internal/integration/... || { echo "::error::go test (integration) failed"; exit 1; }
+          else
+            echo "::notice::No internal/integration directory yet — skipping (will be populated by TASK-411)"
+          fi
+
+      # ---------------------------------------------------------------- 14
+      - name: "14/14 — docker compose down -v"
+        if: always()
+        run: |
+          docker compose down -v

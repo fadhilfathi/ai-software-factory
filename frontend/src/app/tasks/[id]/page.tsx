@@ -164,15 +164,15 @@ export default function TaskDetailPage({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-mono text-gray-500">
-                        {exec.execution_id?.slice(0, 8) ?? exec.id.slice(0, 8)}
+                        {(exec as { execution_id?: string }).execution_id?.slice(0, 8) ?? exec.id.slice(0, 8)}
                       </span>
-                      <Badge color={exec.status === "completed" ? "emerald" : exec.status === "running" ? "blue" : "gray"}>
+                      <Badge color={exec.status === "succeeded" ? "emerald" : exec.status === "running" ? "blue" : "gray"}>
                         {exec.status}
                       </Badge>
                     </div>
                     <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
-                      {exec.agent_name && <span>Agent: {exec.agent_name}</span>}
-                      {exec.started_at && <span>&middot; {timeAgo(exec.started_at)}</span>}
+                      {(exec as { agent_name?: string }).agent_name && <span>Agent: {(exec as { agent_name?: string }).agent_name}</span>}
+                      {(exec as { started_at?: string }).started_at && <span>&middot; {timeAgo((exec as { started_at?: string }).started_at)}</span>}
                     </div>
                   </div>
                 ))}
@@ -208,7 +208,7 @@ export default function TaskDetailPage({
                         {del.title}
                       </span>
                       <Badge color="gray" variant="outline">
-                        v{del.version}
+                        v{(del as { version?: number }).version ?? 1}
                       </Badge>
                     </div>
                     <div className="mt-1.5 flex items-center justify-between text-xs text-gray-500">
