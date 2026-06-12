@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,35 +10,34 @@ import (
 type TaskPriority string
 
 const (
-	PriorityLow     TaskPriority = "low"
-	PriorityMedium  TaskPriority = "medium"
-	PriorityHigh    TaskPriority = "high"
+	PriorityLow      TaskPriority = "low"
+	PriorityMedium   TaskPriority = "medium"
+	PriorityHigh     TaskPriority = "high"
 	PriorityCritical TaskPriority = "critical"
 )
 
-// TaskStatus represents the lifecycle state of a task.
+// TaskStatus represents the lifecycle state of a task (Kanban column).
 type TaskStatus string
 
 const (
-	TaskBacklog TaskStatus = "backlog"
-	TaskTodo    TaskStatus = "todo"
+	TaskBacklog    TaskStatus = "backlog"
+	TaskReady      TaskStatus = "ready"
 	TaskInProgress TaskStatus = "in_progress"
-	TaskReview  TaskStatus = "review"
-	TaskDone    TaskStatus = "done"
+	TaskReview     TaskStatus = "review"
+	TaskDone       TaskStatus = "done"
+	TaskBlocked    TaskStatus = "blocked"
 )
 
 // Task represents a unit of work within a project.
 type Task struct {
-	ID                 uuid.UUID    `json:"id"`
-	ProjectID          uuid.UUID    `json:"project_id"`
-	Title              string       `json:"title"`
-	Description        string       `json:"description,omitempty"`
-	Type               string       `json:"type,omitempty"`
-	AcceptanceCriteria json.RawMessage `json:"acceptance_criteria,omitempty"`
-	Priority           TaskPriority `json:"priority"`
-	Status             TaskStatus   `json:"status"`
-	EstimatedHours     int          `json:"estimated_hours,omitempty"`
-	AssigneeAgentID    uuid.UUID    `json:"assignee_agent_id,omitempty"`
-	CreatedAt          time.Time    `json:"created_at"`
-	UpdatedAt          time.Time    `json:"updated_at"`
+	ID          uuid.UUID    `json:"id"`
+	ProjectID   uuid.UUID    `json:"project_id"`
+	Title       string       `json:"title"`
+	Description string       `json:"description,omitempty"`
+	Status      TaskStatus   `json:"status"`
+	Priority    TaskPriority `json:"priority"`
+	AssigneeID  uuid.UUID    `json:"assignee_id,omitempty"`
+	Position    int          `json:"position,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }

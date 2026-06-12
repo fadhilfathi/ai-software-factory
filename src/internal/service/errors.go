@@ -6,8 +6,6 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 )
 
-// Error represents an error from the service layer with an HTTP status code
-// and structured body suitable for direct serialization.
 type Error struct {
 	Status  int
 	Code    string
@@ -67,6 +65,14 @@ func internalError(message string) *Error {
 	return &Error{
 		Status:  http.StatusInternalServerError,
 		Code:    "INTERNAL_ERROR",
+		Message: message,
+	}
+}
+
+func unprocessableEntity(code, message string) *Error {
+	return &Error{
+		Status:  http.StatusUnprocessableEntity,
+		Code:    code,
 		Message: message,
 	}
 }

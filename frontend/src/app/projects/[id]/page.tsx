@@ -1,9 +1,10 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useProject, useTasks } from "@/lib/hooks";
+import { useProject, useTasks, useDeleteProject } from "@/lib/hooks";
 import { timeAgo, cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -12,15 +13,16 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { TaskStatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityBadge } from "@/components/shared/PriorityBadge";
 import { ProjectStatusBadge } from "@/components/shared/StatusBadge";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import type { TaskStatus } from "@/lib/types";
 
-const PIPELINE_STAGES = [
-  { key: "request", label: "Request", color: "bg-blue-500/20 text-blue-400" },
-  { key: "analysis", label: "Analysis", color: "bg-cyan-500/20 text-cyan-400" },
-  { key: "planning", label: "Planning", color: "bg-amber-500/20 text-amber-400" },
-  { key: "coding", label: "Coding", color: "bg-emerald-500/20 text-emerald-400" },
-  { key: "review", label: "Review", color: "bg-violet-500/20 text-violet-400" },
-  { key: "deploy", label: "Deploy", color: "bg-rose-500/20 text-rose-400" },
+const TASK_SUMMARY_STATUSES: { key: TaskStatus; label: string }[] = [
+  { key: "backlog", label: "Backlog" },
+  { key: "ready", label: "Ready" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "review", label: "Review" },
+  { key: "done", label: "Done" },
+  { key: "blocked", label: "Blocked" },
 ];
 
 export default function ProjectDetailPage({
@@ -29,8 +31,22 @@ export default function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const { data: project, isLoading: projectLoading, isError: projectError } = useProject(id);
   const { data: tasks, isLoading: tasksLoading } = useTasks(id);
+  const deleteProject = useDeleteProject();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const taskCounts = TASK_SUMMARY_STATUSES.map((s) => ({
+    ...s,
+    count: tasks?.filter((t) => t.status === s.key).length ?? 0,
+  }));
+  const totalTasks = tasks?.length ?? 0;
+
+  const handleDelete = async () => {
+    await deleteProject.mutateAsync(id);
+    router.push("/projects");
+  };
 
   if (projectLoading) {
     return (
@@ -75,12 +91,33 @@ export default function ProjectDetailPage({
           </span>
         }
         actions={
-          <Link
-            href="/projects"
-            className="text-sm text-gray-400 hover:text-gray-200 transition-colors"
-          >
-            &larr; Back
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/projects/${id}/board`}
+              className="rounded-lg border border-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+            >
+              Kanban Board
+            </Link>
+            <Link
+              href={`/projects/${id}/edit`}
+              className="rounded-lg border border-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+            >
+              Edit
+            </Link>
+            <button
+              onClick={() => setShowDeleteDialog(true)}
+              className="rounded-lg border border-red-800 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/50 transition-colors"
+              type="button"
+            >
+              Delete
+            </button>
+            <Link
+              href="/projects"
+              className="text-sm text-gray-400 hover:text-gray-200 transition-colors ml-2"
+            >
+              &larr; Back
+            </Link>
+          </div>
         }
       />
 
@@ -89,27 +126,22 @@ export default function ProjectDetailPage({
         <p className="mb-6 text-sm text-gray-400">{project.description}</p>
       )}
 
-      {/* Pipeline Stages */}
-      <div className="mb-6 flex gap-3 overflow-x-auto pb-2">
-        {PIPELINE_STAGES.map((stage, i) => (
+      {/* Task Summary Counts */}
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
+        {taskCounts.map(({ key, label, count }) => (
           <div
-            key={stage.key}
-            className="flex shrink-0 flex-col items-center gap-2 rounded-lg border border-gray-800 bg-gray-950 p-3 min-w-[90px]"
+            key={key}
+            className="rounded-lg border border-gray-800 bg-gray-950 p-3 text-center"
           >
-            <div
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold",
-                stage.color,
-              )}
-            >
-              {i + 1}
-            </div>
-            <p className="text-xs text-gray-400 whitespace-nowrap">{stage.label}</p>
+            <p className="text-lg font-bold text-gray-100">{count}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">
+              {label}
+            </p>
           </div>
         ))}
       </div>
 
-      {/* Two column: Task list + Activity */}
+      {/* Two column: Task list + Details */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Tasks */}
         <div className="lg:col-span-2 space-y-3">
@@ -118,7 +150,7 @@ export default function ProjectDetailPage({
               Tasks
             </h3>
             <span className="text-xs text-gray-500">
-              {tasks ? `${tasks.length} total` : ""}
+              {totalTasks > 0 ? `${totalTasks} total` : ""}
             </span>
           </div>
 
@@ -150,9 +182,9 @@ export default function ProjectDetailPage({
                     <TaskStatusBadge status={task.status} />
                   </div>
                 </div>
-                {task.assignee_agent_id && (
+                {task.assignee_id && (
                   <span className="mt-1.5 inline-flex items-center gap-1 rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
-                    @{task.assignee_agent_id.slice(0, 8)}
+                    @{task.assignee_id.slice(0, 8)}
                   </span>
                 )}
               </div>
@@ -196,8 +228,26 @@ export default function ProjectDetailPage({
               <span className="text-gray-300">{timeAgo(project.updated_at)}</span>
             </div>
           </div>
+
+          <Link
+            href={`/projects/${id}/board`}
+            className="flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            Open Kanban Board
+          </Link>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteDialog(false)}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${project.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteProject.isPending}
+      />
     </div>
   );
 }

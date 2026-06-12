@@ -18,16 +18,13 @@ const (
 
 // Project represents a software project within the factory.
 type Project struct {
-	ID            uuid.UUID     `json:"id"`
-	Name          string        `json:"name"`
-	Description   string        `json:"description,omitempty"`
-	Status        ProjectStatus `json:"status"`
-	Template      string        `json:"template,omitempty"`
-	Progress      int           `json:"progress,omitempty"`
-	ActiveAgents  int           `json:"active_agents,omitempty"`
-	AgentsSpawned []string      `json:"agents_spawned,omitempty"`
-	Artifacts     []interface{} `json:"artifacts,omitempty"`
-	Agents        []interface{} `json:"agents,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ID          uuid.UUID     `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description,omitempty"`
+	OwnerID     uuid.UUID     `json:"owner_id"`
+	Status      ProjectStatus `json:"status"`
+	Template    string        `json:"template,omitempty"`
+	Progress    int           `json:"progress,omitempty"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 }

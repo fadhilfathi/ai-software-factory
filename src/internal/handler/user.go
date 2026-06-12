@@ -67,9 +67,14 @@ func (h *UserHandler) Register(c *gin.Context) {
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	uid, exists := c.Get(middleware.UserIDKey)
 	if !exists {
-		uid = "user_from_jwt"
+		writeError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Authentication required")
+		return
 	}
 	userID, _ := uid.(string)
+	if userID == "" {
+		writeError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid user identity")
+		return
+	}
 
 	user, svcErr := h.svc.GetProfile(userID)
 	if svcErr != nil {

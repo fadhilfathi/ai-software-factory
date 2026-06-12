@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useUpdateTask } from "./hooks";
+import { useUpdateTaskStatus } from "./hooks";
 import { api } from "./api";
 import { queryKeys } from "./queryKeys";
 import { ReactNode } from "react";
@@ -18,13 +18,13 @@ const mockTask: Task = {
   project_id: "proj-1",
   title: "Test Task",
   description: "Test Description",
-  status: "todo",
+  status: "backlog",
   priority: "medium",
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
 
-describe("useUpdateTask", () => {
+describe("useUpdateTaskStatus", () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
@@ -51,13 +51,12 @@ describe("useUpdateTask", () => {
       rejectApi = reject;
     }));
 
-    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper });
 
     act(() => {
       result.current.mutate({ id: "task-1", status: "in_progress" });
     });
 
-    // Check optimistic update in cache immediately
     await waitFor(() => {
       const updatedList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
       expect(updatedList.data[0].status).toBe("in_progress");
@@ -66,21 +65,19 @@ describe("useUpdateTask", () => {
       expect(updatedDetail.status).toBe("in_progress");
     });
 
-    // Now reject the API
     act(() => {
       rejectApi(new Error("API Error"));
     });
 
-    // Wait for the mutation to fail and rollback
     await waitFor(() => {
       expect(result.current.isError).toBe(true);
     });
 
     const rolledBackList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
-    expect(rolledBackList.data[0].status).toBe("todo");
+    expect(rolledBackList.data[0].status).toBe("backlog");
 
     const rolledBackDetail: any = queryClient.getQueryData(queryKeys.tasks.detail("task-1"));
-    expect(rolledBackDetail.status).toBe("todo");
+    expect(rolledBackDetail.status).toBe("backlog");
   });
 
   it("should optimistically update task status and persist on success", async () => {
@@ -94,19 +91,17 @@ describe("useUpdateTask", () => {
       resolveApi = resolve;
     }));
 
-    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    const { result } = renderHook(() => useUpdateTaskStatus(), { wrapper });
 
     act(() => {
       result.current.mutate({ id: "task-1", status: "in_progress" });
     });
 
-    // Check optimistic update
     await waitFor(() => {
       const updatedList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
       expect(updatedList.data[0].status).toBe("in_progress");
     });
 
-    // Now resolve the API
     act(() => {
       resolveApi(updatedTask);
     });
@@ -115,6 +110,6 @@ describe("useUpdateTask", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(api.patch).toHaveBeenCalledWith("/v1/tasks/task-1", { status: "in_progress" });
+    expect(api.patch).toHaveBeenCalledWith("/v1/tasks/task-1/status", { status: "in_progress" });
   });
 });

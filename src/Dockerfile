@@ -28,6 +28,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=builder /build/api /app/api
+COPY --from=builder /build/db/migrations /app/db/migrations
 
 WORKDIR /app
 USER appuser

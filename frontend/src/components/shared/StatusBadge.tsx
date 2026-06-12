@@ -29,10 +29,11 @@ export function ProjectStatusBadge({ status, className }: StatusBadgeProjectProp
 
 const TASK_STATUS_MAP: Record<TaskStatus, { label: string; color: BadgeColor }> = {
   backlog: { label: "Backlog", color: "gray" },
-  todo: { label: "Todo", color: "blue" },
+  ready: { label: "Ready", color: "cyan" },
   in_progress: { label: "In Progress", color: "emerald" },
   review: { label: "Review", color: "violet" },
   done: { label: "Done", color: "gray" },
+  blocked: { label: "Blocked", color: "red" },
 };
 
 type StatusBadgeTaskProps = {

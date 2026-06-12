@@ -36,9 +36,10 @@ type ProjectStore interface {
 
 // ProjectFilter holds optional query parameters for listing projects.
 type ProjectFilter struct {
-	Status model.ProjectStatus
-	Page   int
-	Limit  int
+	Status  model.ProjectStatus
+	OwnerID uuid.UUID
+	Page    int
+	Limit   int
 }
 
 // AgentStore defines persistence operations for agents.
@@ -68,10 +69,11 @@ type TaskStore interface {
 
 // TaskFilter holds optional query parameters for listing tasks.
 type TaskFilter struct {
-	ProjectID uuid.UUID
-	Status    model.TaskStatus
-	Page      int
-	Limit     int
+	ProjectID  uuid.UUID
+	Status     model.TaskStatus
+	AssigneeID uuid.UUID
+	Page       int
+	Limit      int
 }
 
 // CodeStore defines persistence operations for code generation and commits.

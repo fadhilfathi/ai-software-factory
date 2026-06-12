@@ -30,7 +30,7 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘          │
 │       │            │            │            │                   │
 │  ┌────┴─────┐ ┌────┴─────┐ ┌────┴─────┐ ┌────┴─────┐          │
-│  │    QA    │ │  Deploy  │ │Notifica- │ │  User    │          │
+│  │   Task   │ │  Deploy  │ │Notifica- │ │  User    │          │
 │  │ Service  │ │ Service  │ │tion Svc  │ │ Service  │          │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
 │                                                                  │
@@ -56,6 +56,7 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **State Management:** React Query + Zustand
+- **Drag-and-Drop:** @dnd-kit (Kanban board)
 - **Real-time:** Server-Sent Events (SSE) for agent status
 
 ### Backend
@@ -82,6 +83,195 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 - **CI/CD:** GitHub Actions
 - **Monitoring:** Prometheus + Grafana
 - **Logging:** ELK Stack or Loki
+
+---
+
+## Sprint 3 Service Layer
+
+The Sprint 3 implementation added two core services with full CRUD + state-machine support.
+
+### Project Service
+
+**File:** `src/internal/service/project.go`
+
+The `ProjectService` wraps the `store.Store` interface and provides business logic:
+
+| Method | Description | Validation |
+|--------|-------------|------------|
+| `CreateProject` | Create a new project with `initializing` status | `name` required |
+| `GetProject` | Fetch a project by UUID | Returns `NOT_FOUND` if missing |
+| `ListProjects` | Paginated list with optional status filter | Page defaults to 1, limit to 20 |
+| `UpdateProject` | Partial update (name, description, status) | Only provided fields applied |
+| `DeleteProject` | Remove a project by UUID | Returns `NOT_FOUND` if missing |
+| `DecomposeProject` | Trigger project decomposition (future) | Validates project exists |
+
+### Task Service
+
+**File:** `src/internal/service/task.go`
+
+The `TaskService` manages tasks within a project, including Kanban status transitions:
+
+| Method | Description | Validation |
+|--------|-------------|------------|
+| `CreateTask` | Create task with `backlog` status and `medium` default priority | `title` required, `project_id` must exist |
+| `GetTask` | Fetch a task by UUID | Returns `NOT_FOUND` if missing |
+| `ListProjectTasks` | Paginated list with optional status filter | Page defaults to 1, limit to 20 |
+| `UpdateTask` | Partial update (title, description, priority, assignee) | Only provided fields applied |
+| `DeleteTask` | Remove a task by UUID | Returns `NOT_FOUND` if missing |
+| `UpdateTaskStatus` | Kanban state-machine transition | Validated against transition map |
+
+### Status Transition State Machine
+
+**File:** `src/internal/service/service.go`
+
+```go
+taskStatusTransitions = map[model.TaskStatus][]model.TaskStatus{
+    model.TaskBacklog:    {model.TaskReady, model.TaskBlocked},
+    model.TaskReady:      {model.TaskInProgress, model.TaskBlocked},
+    model.TaskInProgress: {model.TaskReview, model.TaskBlocked},
+    model.TaskReview:     {model.TaskDone, model.TaskBlocked},
+    model.TaskDone:       {model.TaskBlocked},
+    model.TaskBlocked:    {model.TaskBacklog, model.TaskReady,
+                           model.TaskInProgress, model.TaskReview, model.TaskDone},
+}
+```
+
+Invalid transitions return HTTP `422 Unprocessable Entity` with code `INVALID_TRANSITION`.
+
+### Services Composition
+
+**File:** `src/internal/service/service.go`
+
+The `Services` struct composes all service instances:
+
+| Service | Store Interface | Description |
+|---------|----------------|-------------|
+| `AuthService` | UserStore | JWT authentication |
+| `UserService` | UserStore | User profile management |
+| `ProjectService` | ProjectStore | Project CRUD |
+| `TaskService` | TaskStore | Task CRUD + Kanban status |
+| `AgentService` | AgentStore | Agent lifecycle |
+| `CodeService` | CodeStore | Code generation |
+| `ReviewService` | ReviewStore | Code review |
+| `DeploymentService` | DeploymentStore | Deployment management |
+| `WebhookService` | WebhookStore | Webhook registration |
+
+---
+
+## Sprint 3 Store Layer
+
+### In-Memory Store (Fallback)
+
+**File:** `src/internal/store/memory.go`
+
+Implements all `Store` interfaces using `sync.RWMutex`-protected maps. Used when `DB_HOST` is not set. All data is ephemeral — resets on server restart.
+
+```
+NewMemoryStore() → Store
+  ├─ Users()      → memoryUserStore
+  ├─ Projects()   → memoryProjectStore
+  ├─ Agents()     → memoryAgentStore
+  ├─ Tasks()      → memoryTaskStore
+  ├─ Code()       → memoryCodeStore
+  ├─ Reviews()    → memoryReviewStore
+  ├─ Deployments()→ memoryDeploymentStore
+  └─ Webhooks()   → memoryWebhookStore
+```
+
+### PostgreSQL Store
+
+**File:** `src/internal/store/postgres/store.go`
+
+Wraps a `pgx/v5` connection pool. Uses the in-memory store as a fallback for stores not yet migrated (User, Agent, Code, Review, Deployment, Webhook). Projects and Tasks are backed by PostgreSQL.
+
+```
+NewStore(pool) → Store
+  ├─ Projects() → postgresProjectStore  (PostgreSQL)
+  ├─ Tasks()    → postgresTaskStore     (PostgreSQL)
+  └─ Others()   → memoryStore           (fallback)
+```
+
+**Auto-selection logic** in `src/cmd/main.go`:
+```go
+if dbHost := os.Getenv("DB_HOST"); dbHost != "" {
+    pool, _ := db.Connect(ctx, config)
+    db.RunMigrations(ctx, pool, "db/migrations")
+    st = postgres.NewStore(pool)  // PostgreSQL + fallback
+} else {
+    st = store.NewMemoryStore()   // In-memory only
+}
+```
+
+### Store Interface
+
+**File:** `src/internal/store/store.go`
+
+```
+Store
+├─ Users()      → UserStore      (Create, GetByID, GetByEmail, List, Update, CheckProjectAccess)
+├─ Projects()   → ProjectStore   (Create, GetByID, List, Update, Delete)
+├─ Agents()     → AgentStore     (Create, GetByID, List, Update, Delete)
+├─ Tasks()      → TaskStore      (Create, GetByID, List, Update, Delete)
+├─ Code()       → CodeStore      (CodeGen + File + Commit operations)
+├─ Reviews()    → ReviewStore    (Create, GetByID, ListByProject, Update)
+├─ Deployments()→ DeploymentStore(Create, GetByID, ListByProject, Update)
+└─ Webhooks()   → WebhookStore   (Create, GetByID, List, Update, Delete)
+```
+
+---
+
+## Sprint 3 Frontend Pages
+
+### Next.js App Router Structure
+
+```
+frontend/src/app/
+├── projects/
+│   ├── page.tsx              # Project list with status filter + pagination
+│   ├── new/page.tsx          # Create project form
+│   └── [id]/
+│       ├── page.tsx          # Project detail with task summary + task list
+│       ├── edit/page.tsx     # Edit project form
+│       └── board/page.tsx    # Kanban board with drag-and-drop
+├── dashboard/page.tsx        # Dashboard metrics
+├── agents/page.tsx           # Agent list
+├── tasks/page.tsx            # Task overview
+└── settings/page.tsx         # Settings
+```
+
+### React Query Integration
+
+**File:** `frontend/src/lib/hooks.ts`
+
+All API operations use `@tanstack/react-query` v5 for caching, background refetching, and optimistic updates.
+
+| Hook | Endpoint | Cache Strategy |
+|------|----------|---------------|
+| `useProjects` | `GET /v1/projects` | Stale-while-revalidate |
+| `useProject` | `GET /v1/projects/:id` | Cache by ID |
+| `useCreateProject` | `POST /v1/projects` | Invalidates list |
+| `useUpdateProject` | `PUT /v1/projects/:id` | Invalidates list + detail |
+| `useDeleteProject` | `DELETE /v1/projects/:id` | Invalidates list |
+| `useTasks` | `GET /v1/projects/:projectId/tasks` | Cache by project |
+| `useCreateTask` | `POST /v1/projects/:projectId/tasks` | Invalidates task list |
+| `useUpdateTaskStatus` | `PATCH /v1/tasks/:id/status` | **Optimistic update** with rollback |
+| `useDeleteTask` | `DELETE /v1/tasks/:id` | Invalidates task list |
+
+### Kanban Board Components
+
+**File:** `frontend/src/components/kanban/`
+
+```
+kanban/
+├── KanbanBoard.tsx    # DndContext + Column layout + DragOverlay
+├── KanbanColumn.tsx   # SortableContext per column + column header
+├── TaskCard.tsx       # Draggable task card with priority badge
+└── AddTaskDialog.tsx  # Inline task creation dialog
+```
+
+Built with `@dnd-kit/core` and `@dnd-kit/sortable`. Uses `PointerSensor` with 5px activation distance to prevent accidental drags. Optimistic UI updates the task status immediately on drop, with rollback on API error.
+
+---
 
 ## Deployment Architecture
 
@@ -113,131 +303,66 @@ Cloud Provider (AWS/GCP/Azure)
     └── AlertManager
 ```
 
+---
+
+## Key Architectural Decisions (Sprint 3 Additions)
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Store Architecture | Dual PostgreSQL + in-memory | Allows development without Docker; production uses PostgreSQL. Auto-selected at startup via `DB_HOST` env var. |
+| Kanban State Machine | Go service layer with explicit map | Testable, no hidden state, clear transition rules in a single file. |
+| Drag-and-Drop | @dnd-kit | Lightweight (3KB gzip), accessible, React-first design. |
+| API Integration | React Query v5 | Automatic caching, background refetch, optimistic updates with rollback. |
+| Status Codes | 201/204 for creates/deletes | REST best practices. `PATCH /status` returns `422` for invalid transitions. |
+
+---
+
 ## Data Flow
 
 ### Project Creation Flow
 ```
-User → API Gateway → Project Service → PostgreSQL
-                                    ↓
-                              PM Agent (spawned)
-                                    ↓
-                              Generates: User Stories, Tasks
-                                    ↓
-                              Agent Orchestrator → Status Update → User (SSE)
+User → Projects Page (form) → useCreateProject → POST /v1/projects
+                                                    ↓
+                                              ProjectHandler.Create
+                                                    ↓
+                                              ProjectService.CreateProject
+                                                    ↓
+                                              ProjectStore.Create (PostgreSQL / memory)
+                                                    ↓
+                                              Response (201) → React Query cache invalidation
 ```
 
-### Code Generation Flow
+### Kanban Drag-and-Drop Flow
 ```
-Agent Orchestrator → Developer Agent → Code Service → Git Repo
-                                    ↓
-                              Review Agent (triggered)
-                                    ↓
-                              Quality Gate Check
-                                    ↓
-                              Pass? → Merge + Deploy
-                              Fail? → Developer Agent (retry with feedback)
-```
-
-### Deployment Flow
-```
-Code Service (merge event) → Deploy Service → CI/CD Pipeline
-                                          ↓
-                                    Build → Test → Deploy
-                                          ↓
-                                    Health Check
-                                          ↓
-                                    Success? → Notify User
-                                    Failure? → Rollback + Notify
+User drags task card → DndContext.onDragEnd
+                        ↓
+                  handleStatusChange(taskId, newStatus)
+                        ↓
+                  useUpdateTaskStatus.mutate({ id, status })
+                        ↓
+                  Optimistic UI update (immediate)
+                   ┌────┴────┐
+                   │         │
+              PATCH /v1/tasks/:id/status
+                   │         │
+               Success    Failure
+                   │         │
+              Cache sync   Rollback UI
 ```
 
-## Agent Orchestration Pattern
-
-### Agent Lifecycle
-```
-┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
-│  Spawn  │────▶│ Assign  │────▶│ Execute │────▶│  Review │
-│         │     │  Task   │     │  Task   │     │ Output  │
-└─────────┘     └─────────┘     └─────────┘     └─────────┘
-                                      │              │
-                                      │    ┌─────────┴─────────┐
-                                      │    │                   │
-                                      ▼    ▼                   ▼
-                                   ┌─────────┐          ┌─────────┐
-                                   │  Retry  │          │ Complete│
-                                   │ (if     │          │         │
-                                   │ failed) │          │         │
-                                   └─────────┘          └─────────┘
-```
-
-### Task Decomposition
-```
-Project Request
-       │
-       ▼
-┌─────────────┐
-│  PM Agent   │
-│ (Decompose) │
-└──────┬──────┘
-       │
-       ├──▶ User Story 1 ──▶ Task 1.1 ──▶ Developer Agent
-       │                    Task 1.2 ──▶ Developer Agent
-       │
-       ├──▶ User Story 2 ──▶ Task 2.1 ──▶ Developer Agent
-       │                    Task 2.2 ──▶ Architect Agent
-       │
-       └──▶ User Story 3 ──▶ Task 3.1 ──▶ Developer Agent
-```
-
-## Message Passing / Event System
-
-### Event Types
-| Event | Producer | Consumer | Description |
-|-------|----------|----------|-------------|
-| `project.created` | Project Service | PM Agent | New project needs decomposition |
-| `task.assigned` | Agent Orch. | Developer Agent | Task ready for implementation |
-| `code.committed` | Code Service | Review Agent | New code needs review |
-| `review.approved` | Review Agent | Deploy Service | Code approved for deployment |
-| `deploy.completed` | Deploy Service | QA Agent | Deployment ready for testing |
-| `test.passed` | QA Agent | User | Tests pass, feature ready |
-| `agent.failed` | Agent Worker | Agent Orch. | Agent needs retry or escalation |
-
-### Event Bus
-- **Technology:** Redis Streams (lightweight) or Apache Kafka (scale)
-- **Pattern:** Publish-Subscribe with consumer groups
-- **Retention:** 7 days for replay capability
-- **Ordering:** Per-project event ordering guaranteed
-
-## Storage Strategy
-
-### Code Repositories
-- **Location:** GitHub/GitLab (hosted) or Gitea (self-hosted)
-- **Pattern:** One repository per project
-- **Branching:** main → develop → feature branches
-- **Protection:** main branch requires review approval
-
-### Artifacts
-- **Location:** S3-compatible object storage
-- **Types:** Build artifacts, deployment packages, reports
-- **Lifecycle:** 30-day retention for builds, permanent for releases
-- **Access:** Pre-signed URLs for temporary access
-
-### Logs & Audit
-- **Location:** Elasticsearch or Loki
-- **Retention:** 90 days hot, 1 year cold
-- **Indexing:** By project, agent, timestamp
-- **Search:** Full-text search across all logs
+---
 
 ## Security Architecture
 
 ### Authentication Flow
 ```
 User → Login (OAuth/Email) → Auth Service → JWT Token
-                                                    │
-                                              ┌─────┴─────┐
-                                              │ Access +  │
-                                              │ Refresh   │
-                                              │ Tokens    │
-                                              └───────────┘
+                                                     │
+                                               ┌─────┴─────┐
+                                               │ Access +  │
+                                               │ Refresh   │
+                                               │ Tokens    │
+                                               └───────────┘
 ```
 
 ### Network Security
@@ -253,6 +378,8 @@ User → Login (OAuth/Email) → Auth Service → JWT Token
 - Resource limits (CPU, memory, execution time)
 - Output sanitization before user display
 
+---
+
 ## Scalability Approach
 
 ### Horizontal Scaling
@@ -267,16 +394,7 @@ User → Login (OAuth/Email) → Auth Service → JWT Token
 - Memory > 80% → Scale up database
 - Connections > 80% → Scale up connection pool
 
-## Key Architectural Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Database | PostgreSQL | ACID compliance, JSON support, proven reliability |
-| Cache | Redis | Performance, pub/sub for events, session storage |
-| Agent Runtime | Go | Consistent with API, goroutines/channels for high-concurrency agent loops |
-| Communication | REST + SSE | REST for commands, SSE for real-time updates |
-| Storage | S3-compatible | Scalable, cost-effective, widely supported |
-| Container | Docker | Standard, portable, Kubernetes-native |
+---
 
 ## Trade-offs
 
@@ -285,3 +403,4 @@ User → Login (OAuth/Email) → Auth Service → JWT Token
 3. **Self-hosted vs Managed:** Chose managed services for production, self-hosted for development
 4. **Synchronous vs Async:** Chose async agent execution for resilience, accepting eventual consistency
 5. **Single Agent vs Multi-Agent:** Chose multi-agent for specialization, accepting coordination overhead
+6. **In-Memory vs Persistent:** Chose dual store for developer experience, accepting the need to handle two storage backends

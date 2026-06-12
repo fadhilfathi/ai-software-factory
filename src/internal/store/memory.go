@@ -57,13 +57,13 @@ type memoryUserStore struct{ m *memoryStore }
 func (s *memoryUserStore) Create(u *model.User) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.users[u.ID]; exists {
+	if _, exists := s.m.users[u.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
 	if _, exists := s.m.usersEmail[u.Email]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.users[u.ID] = u
+	s.m.users[u.ID.String()] = u
 	s.m.usersEmail[u.Email] = u
 	return nil
 }
@@ -104,24 +104,24 @@ func (s *memoryUserStore) List() ([]*model.User, error) {
 func (s *memoryUserStore) Update(u *model.User) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.users[u.ID]; !ok {
+	if _, ok := s.m.users[u.ID.String()]; !ok {
 		return ErrNotFound
 	}
 	// Update email index if changed
-	old, _ := s.m.users[u.ID]
+	old, _ := s.m.users[u.ID.String()]
 	if old.Email != u.Email {
 		delete(s.m.usersEmail, old.Email)
 		s.m.usersEmail[u.Email] = u
 	}
-	s.m.users[u.ID] = u
+	s.m.users[u.ID.String()] = u
 	return nil
 }
 
 // CheckProjectAccess returns true if the user has access to the project
-func (s *memoryUserStore) CheckProjectAccess(userID, projectID string) bool {
+func (s *memoryUserStore) CheckProjectAccess(userID, projectID uuid.UUID) bool {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	user, ok := s.m.users[userID]
+	user, ok := s.m.users[userID.String()]
 	if !ok {
 		return false
 	}
@@ -131,7 +131,7 @@ func (s *memoryUserStore) CheckProjectAccess(userID, projectID string) bool {
 	}
 	// Check if user is a member of the project
 	for _, pid := range user.Projects {
-		if pid == projectID {
+		if pid == projectID.String() {
 			return true
 		}
 	}
@@ -145,10 +145,10 @@ type memoryProjectStore struct{ m *memoryStore }
 func (s *memoryProjectStore) Create(p *model.Project) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.projects[p.ID]; exists {
+	if _, exists := s.m.projects[p.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.projects[p.ID] = p
+	s.m.projects[p.ID.String()] = p
 	return nil
 }
 
@@ -169,6 +169,9 @@ func (s *memoryProjectStore) List(filter ProjectFilter) ([]*model.Project, int, 
 	var filtered []*model.Project
 	for _, p := range s.m.projects {
 		if filter.Status != "" && p.Status != filter.Status {
+			continue
+		}
+		if filter.OwnerID != uuid.Nil && p.OwnerID != filter.OwnerID {
 			continue
 		}
 		filtered = append(filtered, p)
@@ -202,20 +205,21 @@ func (s *memoryProjectStore) List(filter ProjectFilter) ([]*model.Project, int, 
 func (s *memoryProjectStore) Update(p *model.Project) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.projects[p.ID]; !ok {
+	if _, ok := s.m.projects[p.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.projects[p.ID] = p
+	s.m.projects[p.ID.String()] = p
 	return nil
 }
 
-func (s *memoryProjectStore) Delete(id string) error {
+func (s *memoryProjectStore) Delete(id uuid.UUID) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.projects[id]; !ok {
+	key := id.String()
+	if _, ok := s.m.projects[key]; !ok {
 		return ErrNotFound
 	}
-	delete(s.m.projects, id)
+	delete(s.m.projects, key)
 	return nil
 }
 
@@ -226,10 +230,10 @@ type memoryAgentStore struct{ m *memoryStore }
 func (s *memoryAgentStore) Create(a *model.Agent) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.agents[a.ID]; exists {
+	if _, exists := s.m.agents[a.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.agents[a.ID] = a
+	s.m.agents[a.ID.String()] = a
 	return nil
 }
 
@@ -249,7 +253,7 @@ func (s *memoryAgentStore) List(filter AgentFilter) ([]*model.Agent, int, error)
 
 	var filtered []*model.Agent
 	for _, a := range s.m.agents {
-		if filter.ProjectID != "" && a.ProjectID != filter.ProjectID {
+		if filter.ProjectID != uuid.Nil && a.ProjectID != filter.ProjectID {
 			continue
 		}
 		filtered = append(filtered, a)
@@ -282,20 +286,21 @@ func (s *memoryAgentStore) List(filter AgentFilter) ([]*model.Agent, int, error)
 func (s *memoryAgentStore) Update(a *model.Agent) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.agents[a.ID]; !ok {
+	if _, ok := s.m.agents[a.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.agents[a.ID] = a
+	s.m.agents[a.ID.String()] = a
 	return nil
 }
 
-func (s *memoryAgentStore) Delete(id string) error {
+func (s *memoryAgentStore) Delete(id uuid.UUID) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.agents[id]; !ok {
+	key := id.String()
+	if _, ok := s.m.agents[key]; !ok {
 		return ErrNotFound
 	}
-	delete(s.m.agents, id)
+	delete(s.m.agents, key)
 	return nil
 }
 
@@ -306,10 +311,10 @@ type memoryTaskStore struct{ m *memoryStore }
 func (s *memoryTaskStore) Create(t *model.Task) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.tasks[t.ID]; exists {
+	if _, exists := s.m.tasks[t.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.tasks[t.ID] = t
+	s.m.tasks[t.ID.String()] = t
 	return nil
 }
 
@@ -329,10 +334,13 @@ func (s *memoryTaskStore) List(filter TaskFilter) ([]*model.Task, int, error) {
 
 	var filtered []*model.Task
 	for _, t := range s.m.tasks {
-		if filter.ProjectID != "" && t.ProjectID != filter.ProjectID {
+		if filter.ProjectID != uuid.Nil && t.ProjectID != filter.ProjectID {
 			continue
 		}
 		if filter.Status != "" && t.Status != filter.Status {
+			continue
+		}
+		if filter.AssigneeID != uuid.Nil && t.AssigneeID != filter.AssigneeID {
 			continue
 		}
 		filtered = append(filtered, t)
@@ -365,20 +373,21 @@ func (s *memoryTaskStore) List(filter TaskFilter) ([]*model.Task, int, error) {
 func (s *memoryTaskStore) Update(t *model.Task) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.tasks[t.ID]; !ok {
+	if _, ok := s.m.tasks[t.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.tasks[t.ID] = t
+	s.m.tasks[t.ID.String()] = t
 	return nil
 }
 
-func (s *memoryTaskStore) Delete(id string) error {
+func (s *memoryTaskStore) Delete(id uuid.UUID) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.tasks[id]; !ok {
+	key := id.String()
+	if _, ok := s.m.tasks[key]; !ok {
 		return ErrNotFound
 	}
-	delete(s.m.tasks, id)
+	delete(s.m.tasks, key)
 	return nil
 }
 

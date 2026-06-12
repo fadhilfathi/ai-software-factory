@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useProjects, useTasks, useUpdateTask } from "@/lib/hooks";
+import { useProjects, useTasks, useUpdateTaskStatus } from "@/lib/hooks";
 import { useKanbanDrag } from "@/hooks/useKanbanDrag";
 import { cn } from "@/lib/utils";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -14,18 +14,20 @@ import type { Task, TaskStatus } from "@/lib/types";
 
 const COLUMNS: { key: TaskStatus; label: string }[] = [
   { key: "backlog", label: "Backlog" },
-  { key: "todo", label: "Todo" },
+  { key: "ready", label: "Ready" },
   { key: "in_progress", label: "In Progress" },
   { key: "review", label: "Review" },
   { key: "done", label: "Done" },
+  { key: "blocked", label: "Blocked" },
 ];
 
 const COLUMN_COLORS: Record<TaskStatus, string> = {
   backlog: "border-gray-800",
-  todo: "border-blue-500/30",
+  ready: "border-cyan-500/30",
   in_progress: "border-emerald-500/30",
   review: "border-violet-500/30",
   done: "border-gray-600/30",
+  blocked: "border-red-500/30",
 };
 
 const PRIORITY_OPTIONS = [
@@ -43,7 +45,7 @@ export default function TaskBoardPage() {
 
   const projectId = selectedProject || (projectsData?.data?.[0]?.id ?? "");
   const { data: tasks, isLoading } = useTasks(projectId);
-  const updateTask = useUpdateTask();
+  const updateTaskStatus = useUpdateTaskStatus();
   const { activeDrag, startDrag, endDrag } = useKanbanDrag();
 
   // Group tasks by status
@@ -51,7 +53,7 @@ export default function TaskBoardPage() {
     (acc, task) => {
       if (!acc[task.status]) acc[task.status] = [];
       if (priorityFilter && task.priority !== priorityFilter) return acc;
-      if (agentFilter && task.assignee_agent_id !== agentFilter) return acc;
+      if (agentFilter && task.assignee_id !== agentFilter) return acc;
       acc[task.status].push(task);
       return acc;
     },
@@ -64,13 +66,13 @@ export default function TaskBoardPage() {
 
   const handleMoveTask = useCallback(
     (taskId: string, newStatus: TaskStatus) => {
-      updateTask.mutate({ id: taskId, status: newStatus });
+      updateTaskStatus.mutate({ id: taskId, status: newStatus });
     },
-    [updateTask],
+    [updateTaskStatus],
   );
 
   const uniqueAgents = tasks
-    ? [...new Set(tasks.map((t) => t.assignee_agent_id).filter(Boolean))]
+    ? [...new Set(tasks.map((t) => t.assignee_id).filter(Boolean))]
     : [];
 
   const projectOptions = (projectsData?.data ?? []).map((p) => ({
@@ -178,9 +180,9 @@ export default function TaskBoardPage() {
                       <PriorityBadge priority={task.priority} />
                     </div>
                     <p className="mt-1 text-sm text-gray-200 line-clamp-2">{task.title}</p>
-                    {task.assignee_agent_id && (
+                    {task.assignee_id && (
                       <span className="mt-2 inline-flex items-center gap-1 rounded bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
-                        @{task.assignee_agent_id.slice(0, 8)}
+                        @{task.assignee_id.slice(0, 8)}
                       </span>
                     )}
                   </div>

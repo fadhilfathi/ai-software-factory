@@ -12,19 +12,19 @@ describe("useKanbanDrag", () => {
     const { result } = renderHook(() => useKanbanDrag());
 
     act(() => {
-      result.current.startDrag({ id: "task-1", column: "todo" });
+      result.current.startDrag({ id: "task-1", column: "backlog" });
     });
 
-    expect(result.current.activeDrag).toEqual({ id: "task-1", column: "todo" });
+    expect(result.current.activeDrag).toEqual({ id: "task-1", column: "backlog" });
   });
 
   it("should clear active drag item when endDrag is called", () => {
     const { result } = renderHook(() => useKanbanDrag());
 
     act(() => {
-      result.current.startDrag({ id: "task-1", column: "todo" });
+      result.current.startDrag({ id: "task-1", column: "backlog" });
     });
-    expect(result.current.activeDrag).toEqual({ id: "task-1", column: "todo" });
+    expect(result.current.activeDrag).toEqual({ id: "task-1", column: "backlog" });
 
     act(() => {
       result.current.endDrag();

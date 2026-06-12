@@ -15,6 +15,7 @@ import type {
   Task,
   CreateTaskPayload,
   UpdateTaskPayload,
+  UpdateTaskStatusPayload,
   Agent,
   DashboardMetrics,
   ActivityItem,
@@ -88,7 +89,7 @@ export function useTasks(projectId?: string) {
   return useQuery({
     queryKey: queryKeys.tasks.list({ project_id: projectId }),
     queryFn: () =>
-      api.get<PaginatedResponse<Task>>("/v1/tasks", { params: { project_id: projectId } }),
+      api.get<PaginatedResponse<Task>>(`/v1/projects/${projectId}/tasks`),
     enabled: !!projectId,
     select: (res) => res.data,
   });
@@ -106,7 +107,7 @@ export function useTask(id: string) {
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, ...payload }: CreateTaskPayload & { projectId: string }) =>
+    mutationFn: ({ projectId, ...payload }: { projectId: string } & CreateTaskPayload) =>
       api.post<Task>(`/v1/projects/${projectId}/tasks`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
@@ -114,12 +115,25 @@ export function useCreateTask() {
   });
 }
 
-/** Backend: PATCH /v1/tasks/{id} */
+/** Backend: PUT /v1/tasks/{id} — general task update */
 export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...payload }: UpdateTaskPayload & { id: string }) =>
-      api.patch<Task>(`/v1/tasks/${id}`, payload),
+    mutationFn: ({ id, ...payload }: { id: string } & UpdateTaskPayload) =>
+      api.put<Task>(`/v1/tasks/${id}`, payload),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(vars.id) });
+    },
+  });
+}
+
+/** Backend: PATCH /v1/tasks/{id}/status — Kanban status transition */
+export function useUpdateTaskStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string } & UpdateTaskStatusPayload) =>
+      api.patch<Task>(`/v1/tasks/${id}/status`, payload),
     onMutate: async (variables) => {
       await qc.cancelQueries({ queryKey: queryKeys.tasks.all });
 
@@ -127,12 +141,11 @@ export function useUpdateTask() {
       const previousTaskDetail = qc.getQueryData(queryKeys.tasks.detail(variables.id));
 
       qc.setQueriesData({ queryKey: queryKeys.tasks.all }, (old: any) => {
-        console.log("optimistic list update:", !!old, old?.data?.length);
         if (!old || !old.data) return old;
         return {
           ...old,
           data: old.data.map((task: Task) =>
-            task.id === variables.id ? { ...task, ...variables } : task
+            task.id === variables.id ? { ...task, status: variables.status } : task
           ),
         };
       });
@@ -140,13 +153,13 @@ export function useUpdateTask() {
       if (previousTaskDetail) {
         qc.setQueryData(queryKeys.tasks.detail(variables.id), {
           ...(previousTaskDetail as any),
-          ...variables,
+          status: variables.status,
         });
       }
 
       return { previousTasksList, previousTaskDetail };
     },
-    onError: (err, variables, context) => {
+    onError: (_, variables, context) => {
       if (context?.previousTasksList) {
         context.previousTasksList.forEach(([queryKey, data]) => {
           qc.setQueryData(queryKey, data);

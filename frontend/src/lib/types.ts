@@ -55,37 +55,36 @@ export type CreateProjectPayload = {
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
-export type TaskStatus = "backlog" | "todo" | "in_progress" | "review" | "done";
+export type TaskStatus = "backlog" | "ready" | "in_progress" | "review" | "done" | "blocked";
 
 export type Task = {
   id: string;
   project_id: string;
   title: string;
   description?: string;
-  type?: string;
-  acceptance_criteria?: string[];
   priority: TaskPriority;
   status: TaskStatus;
-  estimated_hours?: number;
-  assignee_agent_id?: string;
+  position?: number;
+  assignee_id?: string;
   created_at: string;
   updated_at: string;
 };
 
 export type CreateTaskPayload = {
-  project_id: string;
   title: string;
   description?: string;
-  type?: string;
-  acceptance_criteria?: string[];
   priority?: TaskPriority;
-  assignee_agent_id?: string;
 };
 
 export type UpdateTaskPayload = {
-  status?: TaskStatus;
-  assignee_agent_id?: string;
+  title?: string;
+  description?: string;
   priority?: TaskPriority;
+  assignee_id?: string;
+};
+
+export type UpdateTaskStatusPayload = {
+  status: TaskStatus;
 };
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

@@ -5,13 +5,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// ProjectHandler handles project CRUD endpoints.
 type ProjectHandler struct {
 	svc *service.ProjectService
 }
@@ -29,17 +30,20 @@ type createProjectRequest struct {
 type updateProjectRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Status      string `json:"status"`
 }
 
 type projectResponse struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	OwnerID     string `json:"owner_id"`
 	Status      string `json:"status"`
+	Progress    int    `json:"progress,omitempty"`
 	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
-// Create handles POST /projects.
 func (h *ProjectHandler) Create(c *gin.Context) {
 	var req createProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,10 +51,22 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		return
 	}
 
+	uid, exists := c.Get(middleware.UserIDKey)
+	if !exists {
+		writeError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Authentication required")
+		return
+	}
+	ownerID, err := uuid.Parse(uid.(string))
+	if err != nil {
+		writeError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid user identity")
+		return
+	}
+
 	project, svcErr := h.svc.CreateProject(c.Request.Context(), service.CreateProjectRequest{
 		Name:        req.Name,
 		Description: req.Description,
 		Template:    req.Template,
+		OwnerID:     ownerID,
 	})
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
@@ -60,65 +76,40 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	writeJSON(c, http.StatusCreated, toProjectResponse(project))
 }
 
-// Update handles PATCH /projects/{id}.
-func (h *ProjectHandler) Update(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
-		return
+func (h *ProjectHandler) List(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	filter := store.ProjectFilter{
+		Page:  page,
+		Limit: limit,
+	}
+	if s := c.Query("status"); s != "" {
+		filter.Status = model.ProjectStatus(s)
 	}
 
-	var req updateProjectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
-		return
-	}
-
-	project, svcErr := h.svc.UpdateProject(c.Request.Context(), id, service.UpdateProjectRequest{
-		Name:        req.Name,
-		Description: req.Description,
-	})
+	projects, pagination, svcErr := h.svc.ListProjects(c.Request.Context(), filter)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(c, http.StatusOK, toProjectResponse(project))
+	data := make([]projectResponse, len(projects))
+	for i, p := range projects {
+		data[i] = toProjectResponse(p)
+	}
+
+	writeJSON(c, http.StatusOK, PaginatedResponse{
+		Data: data,
+		Pagination: Pagination{
+			Page:  pagination.Page,
+			Limit: pagination.Limit,
+			Total: pagination.Total,
+			Pages: pagination.Pages,
+		},
+	})
 }
 
-// Delete handles DELETE /projects/{id}.
-func (h *ProjectHandler) Delete(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
-		return
-	}
-
-	if svcErr := h.svc.DeleteProject(c.Request.Context(), id); svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
-// Decompose handles POST /projects/{id}/decompose.
-func (h *ProjectHandler) Decompose(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
-		return
-	}
-
-	if svcErr := h.svc.DecomposeProject(c.Request.Context(), id); svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
-	}
-
-	c.Status(http.StatusAccepted)
-}
-
-// Get handles GET /projects/{id}.
 func (h *ProjectHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -135,12 +126,75 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	writeJSON(c, http.StatusOK, toProjectResponse(project))
 }
 
+func (h *ProjectHandler) Update(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
+		return
+	}
+
+	var req updateProjectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		return
+	}
+
+	svcReq := service.UpdateProjectRequest{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+	if req.Status != "" {
+		svcReq.Status = model.ProjectStatus(req.Status)
+	}
+
+	project, svcErr := h.svc.UpdateProject(c.Request.Context(), id, svcReq)
+	if svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	writeJSON(c, http.StatusOK, toProjectResponse(project))
+}
+
+func (h *ProjectHandler) Delete(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
+		return
+	}
+
+	if svcErr := h.svc.DeleteProject(c.Request.Context(), id); svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *ProjectHandler) Decompose(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
+		return
+	}
+
+	if svcErr := h.svc.DecomposeProject(c.Request.Context(), id); svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	c.Status(http.StatusAccepted)
+}
+
 func toProjectResponse(p *model.Project) projectResponse {
 	return projectResponse{
 		ID:          p.ID.String(),
 		Name:        p.Name,
 		Description: p.Description,
+		OwnerID:     p.OwnerID.String(),
 		Status:      string(p.Status),
+		Progress:    p.Progress,
 		CreatedAt:   p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   p.UpdatedAt.Format(time.RFC3339),
 	}
 }

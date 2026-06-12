@@ -66,11 +66,25 @@ Response:
 
 ---
 
+## Health Check
+
+### GET /healthz
+```
+GET /v1/healthz
+
+Response:
+{
+  "status": "ok"
+}
+```
+
+---
+
 ## Projects
 
 ### Create Project
 ```
-POST /projects
+POST /v1/projects
 
 Request:
 {
@@ -81,57 +95,328 @@ Request:
 
 Response (201):
 {
-  "id": "proj_abc123",
+  "id": "3a1b2c3d-...",
   "name": "E-commerce Platform",
+  "description": "Build a modern e-commerce platform...",
+  "owner_id": "00000000-...",
   "status": "initializing",
+  "template": "web-app",
+  "progress": 0,
   "created_at": "2026-06-10T10:00:00Z",
-  "agents_spawned": ["pm"]
+  "updated_at": "2026-06-10T10:00:00Z"
 }
 ```
 
+Validation:
+- `name` is required (non-empty)
+- Default status: `initializing`
+
 ### List Projects
 ```
-GET /projects?status=active&page=1&limit=20
+GET /v1/projects?status=active&page=1&limit=20
 
 Response:
 {
   "data": [
     {
-      "id": "proj_abc123",
+      "id": "3a1b2c3d-...",
       "name": "E-commerce Platform",
       "status": "in_progress",
       "progress": 45,
-      "active_agents": 3,
-      "created_at": "2026-06-10T10:00:00Z"
+      "owner_id": "00000000-...",
+      "created_at": "2026-06-10T10:00:00Z",
+      "updated_at": "2026-06-10T10:30:00Z"
     }
   ],
-  "pagination": { ... }
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "pages": 1
+  }
 }
 ```
+
+Query parameters:
+- `status` — filter by `initializing`, `in_progress`, `completed`, `archived`
+- `page` — page number (default: 1)
+- `limit` — items per page (default: 20, max: 100)
 
 ### Get Project Details
 ```
-GET /projects/:id
+GET /v1/projects/:id
 
 Response:
 {
-  "id": "proj_abc123",
+  "id": "3a1b2c3d-...",
   "name": "E-commerce Platform",
   "description": "...",
+  "owner_id": "00000000-...",
   "status": "in_progress",
+  "template": "web-app",
   "progress": 45,
-  "artifacts": [
-    { "type": "vision", "status": "complete" },
-    { "type": "architecture", "status": "in_progress" },
-    { "type": "user_stories", "status": "complete" }
-  ],
-  "agents": [
-    { "id": "agent_001", "type": "pm", "status": "idle" },
-    { "id": "agent_002", "type": "architect", "status": "working" }
-  ],
-  "created_at": "2026-06-10T10:00:00Z"
+  "created_at": "2026-06-10T10:00:00Z",
+  "updated_at": "2026-06-10T10:30:00Z"
 }
 ```
+
+### Update Project
+```
+PUT /v1/projects/:id
+
+Request:
+{
+  "name": "E-commerce Platform v2",
+  "description": "Updated description",
+  "status": "in_progress"
+}
+
+Response:
+{
+  "id": "3a1b2c3d-...",
+  "name": "E-commerce Platform v2",
+  "description": "Updated description",
+  "status": "in_progress",
+  ...
+}
+```
+
+All fields are optional. Only provided fields are updated.
+
+### Delete Project
+```
+DELETE /v1/projects/:id
+
+Response: 204 No Content
+```
+
+---
+
+## Tasks
+
+Tasks are scoped to a project. Created with status `backlog` by default.
+
+### Create Task
+```
+POST /v1/projects/:projectId/tasks
+
+Request:
+{
+  "title": "Implement user authentication API",
+  "description": "Create JWT-based authentication with login, register, refresh endpoints",
+  "priority": "high"
+}
+
+Response (201):
+{
+  "id": "b4c5d6e7-...",
+  "project_id": "3a1b2c3d-...",
+  "title": "Implement user authentication API",
+  "description": "Create JWT-based authentication...",
+  "status": "backlog",
+  "priority": "high",
+  "created_at": "2026-06-10T10:00:00Z",
+  "updated_at": "2026-06-10T10:00:00Z"
+}
+```
+
+Validation:
+- `title` is required (non-empty)
+- `priority` defaults to `medium`
+
+### List Tasks for a Project
+```
+GET /v1/projects/:projectId/tasks?status=backlog&page=1&limit=20
+
+Response:
+{
+  "data": [
+    {
+      "id": "b4c5d6e7-...",
+      "project_id": "3a1b2c3d-...",
+      "title": "Implement user authentication API",
+      "status": "backlog",
+      "priority": "high",
+      "position": 0,
+      "created_at": "2026-06-10T10:00:00Z",
+      "updated_at": "2026-06-10T10:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "pages": 1
+  }
+}
+```
+
+Query parameters:
+- `status` — filter by task status
+- `page` — page number (default: 1)
+- `limit` — items per page (default: 20, max: 100)
+
+### Get Task Details
+```
+GET /v1/tasks/:id
+
+Response:
+{
+  "id": "b4c5d6e7-...",
+  "project_id": "3a1b2c3d-...",
+  "title": "Implement user authentication API",
+  "description": "...",
+  "status": "backlog",
+  "priority": "high",
+  "assignee_id": "",
+  "position": 0,
+  "created_at": "2026-06-10T10:00:00Z",
+  "updated_at": "2026-06-10T10:00:00Z"
+}
+```
+
+### Update Task
+```
+PUT /v1/tasks/:id
+
+Request:
+{
+  "title": "Implement JWT auth",
+  "description": "Updated scope description",
+  "priority": "critical",
+  "assignee_id": "agent_001"
+}
+
+Response:
+{
+  "id": "b4c5d6e7-...",
+  "title": "Implement JWT auth",
+  "priority": "critical",
+  "assignee_id": "agent_001",
+  ...
+}
+```
+
+All fields are optional.
+
+### Delete Task
+```
+DELETE /v1/tasks/:id
+
+Response: 204 No Content
+```
+
+---
+
+## Kanban Status Transitions
+
+### Update Task Status
+```
+PATCH /v1/tasks/:id/status
+
+Request:
+{
+  "status": "in_progress"
+}
+
+Response:
+{
+  "id": "b4c5d6e7-...",
+  "status": "in_progress",
+  "updated_at": "2026-06-10T10:30:00Z",
+  ...
+}
+
+Error (422) on invalid transition:
+{
+  "error": {
+    "code": "INVALID_TRANSITION",
+    "message": "Cannot transition from backlog to done"
+  }
+}
+```
+
+### Status Transition Rules
+
+```
+backlog    ──→ ready, blocked
+ready      ──→ in_progress, blocked
+in_progress ──→ review, blocked
+review     ──→ done, blocked
+done       ──→ blocked
+blocked    ──→ backlog, ready, in_progress, review, done
+```
+
+| From \ To | backlog | ready | in_progress | review | done | blocked |
+|-----------|---------|-------|-------------|--------|------|---------|
+| backlog   | -       | ✔     | ✘           | ✘      | ✘    | ✔       |
+| ready     | ✘       | -     | ✔           | ✘      | ✘    | ✔       |
+| in_progress | ✘     | ✘     | -           | ✔      | ✘    | ✔       |
+| review    | ✘       | ✘     | ✘           | -      | ✔    | ✔       |
+| done      | ✘       | ✘     | ✘           | ✘      | -    | ✔       |
+| blocked   | ✔       | ✔     | ✔           | ✔      | ✔    | -       |
+
+---
+
+## Shared Response Shapes
+
+### PaginatedResponse
+```json
+{
+  "data": [ ... ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 150,
+    "pages": 8
+  }
+}
+```
+
+### Project
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string (UUID) | Unique identifier |
+| `name` | string | Project name |
+| `description` | string | Project description (optional) |
+| `owner_id` | string (UUID) | Owner user ID |
+| `status` | string | `initializing`, `in_progress`, `completed`, `archived` |
+| `template` | string | Project template (optional) |
+| `progress` | number | Progress percentage (0-100) |
+| `created_at` | string (ISO 8601) | Creation timestamp |
+| `updated_at` | string (ISO 8601) | Last update timestamp |
+
+### Task
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string (UUID) | Unique identifier |
+| `project_id` | string (UUID) | Parent project ID |
+| `title` | string | Task title |
+| `description` | string | Task description (optional) |
+| `status` | string | `backlog`, `ready`, `in_progress`, `review`, `done`, `blocked` |
+| `priority` | string | `low`, `medium`, `high`, `critical` |
+| `assignee_id` | string (UUID) | Assigned agent/user ID (optional) |
+| `position` | number | Display order within column |
+| `created_at` | string (ISO 8601) | Creation timestamp |
+| `updated_at` | string (ISO 8601) | Last update timestamp |
+
+### Error Response
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed",
+    "details": [
+      { "field": "name", "message": "Name is required" }
+    ]
+  },
+  "request_id": "req_abc123"
+}
+```
+
+Error codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `INTERNAL_ERROR`, `INVALID_TRANSITION`, `INVALID_JSON`
+
+HTTP status codes: `400`, `401`, `404`, `409`, `422`, `500`
 
 ---
 
@@ -139,7 +424,7 @@ Response:
 
 ### Spawn Agent
 ```
-POST /agents/spawn
+POST /v1/agents/spawn
 
 Request:
 {
@@ -162,7 +447,7 @@ Response (201):
 
 ### List Active Agents
 ```
-GET /agents?project_id=proj_abc123
+GET /v1/agents?project_id=proj_abc123
 
 Response:
 {
@@ -181,7 +466,7 @@ Response:
 
 ### Assign Task to Agent
 ```
-POST /agents/:id/assign
+POST /v1/agents/:id/assign
 
 Request:
 {
@@ -203,61 +488,11 @@ Response:
 
 ---
 
-## Tasks
-
-### Create Task
-```
-POST /projects/:projectId/tasks
-
-Request:
-{
-  "title": "Implement user authentication API",
-  "description": "Create JWT-based authentication with login, register, refresh endpoints",
-  "type": "implementation",
-  "acceptance_criteria": [
-    "POST /api/auth/login returns JWT token",
-    "POST /api/auth/register creates new user",
-    "POST /api/auth/refresh rotates tokens"
-  ],
-  "priority": "must_have",
-  "estimated_hours": 8
-}
-
-Response (201):
-{
-  "id": "task_001",
-  "title": "Implement user authentication API",
-  "status": "backlog",
-  "created_at": "2026-06-10T10:00:00Z"
-}
-```
-
-### Update Task Status
-```
-PATCH /tasks/:id
-
-Request:
-{
-  "status": "in_progress",
-  "assignee_agent_id": "agent_dev_001"
-}
-
-Response:
-{
-  "id": "task_001",
-  "status": "in_progress",
-  "assignee_agent_id": "agent_dev_001",
-  "updated_at": "2026-06-10T10:30:00Z"
-}
-```
-
----
-
 ## Code
 
 ### Generate Code
 ```
-POST /code/generate
+POST /v1/code/generate
 
 Request:
 {
@@ -277,7 +512,7 @@ Response (202):
 
 ### Get File Content
 ```
-GET /code/:projectId/files/src/auth/login.ts
+GET /v1/code/:projectId/files/*path
 
 Response:
 {
@@ -292,7 +527,7 @@ Response:
 
 ### Create Commit
 ```
-POST /code/:projectId/commits
+POST /v1/code/:projectId/commits
 
 Request:
 {
@@ -319,7 +554,7 @@ Response (201):
 
 ### Create Review Request
 ```
-POST /reviews
+POST /v1/reviews
 
 Request:
 {
@@ -338,7 +573,7 @@ Response (201):
 
 ### Get Review Results
 ```
-GET /reviews/:id
+GET /v1/reviews/:id
 
 Response:
 {
@@ -369,7 +604,7 @@ Response:
 
 ### Trigger Deployment
 ```
-POST /deployments
+POST /v1/deployments
 
 Request:
 {
@@ -389,7 +624,7 @@ Response (202):
 
 ### Get Deployment Status
 ```
-GET /deployments/:id
+GET /v1/deployments/:id
 
 Response:
 {
@@ -409,7 +644,7 @@ Response:
 
 ### Rollback Deployment
 ```
-POST /deployments/:id/rollback
+POST /v1/deployments/:id/rollback
 
 Response:
 {
@@ -426,7 +661,7 @@ Response:
 
 ### Register
 ```
-POST /users/register
+POST /v1/users/register
 
 Request:
 {
@@ -446,7 +681,7 @@ Response (201):
 
 ### Get Profile
 ```
-GET /users/me
+GET /v1/users/me
 
 Response:
 {
@@ -465,7 +700,7 @@ Response:
 
 ### Register Webhook
 ```
-POST /webhooks
+POST /v1/webhooks
 
 Request:
 {
