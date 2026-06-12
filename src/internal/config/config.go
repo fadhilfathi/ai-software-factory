@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Auth     AuthConfig
-	CORS     CORSConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Auth      AuthConfig
+	CORS      CORSConfig
 	RateLimit RateLimitConfig
+	Agent     AgentConfig
 }
 
 type ServerConfig struct {
@@ -43,6 +44,12 @@ type RateLimitConfig struct {
 	Burst             int
 }
 
+type AgentConfig struct {
+	Runtime     string
+	MemoryLimit int64
+	CPULimit    int64
+}
+
 func Load() *Config {
 	cfg := &Config{
 		Server: ServerConfig{
@@ -69,6 +76,11 @@ func Load() *Config {
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: getEnvInt("RATE_LIMIT_RPM", 100),
 			Burst:             getEnvInt("RATE_LIMIT_BURST", 20),
+		},
+		Agent: AgentConfig{
+			Runtime:     getEnv("AGENT_RUNTIME", "runc"),
+			MemoryLimit: int64(getEnvInt("AGENT_MEMORY_MB", 512)) * 1024 * 1024,
+			CPULimit:    int64(getEnvInt("AGENT_CPU_LIMIT", 50000)),
 		},
 	}
 	return cfg

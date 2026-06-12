@@ -24,6 +24,8 @@ type CodeGenRequest struct {
 	Specification string        `json:"specification"`
 	Files         []string      `json:"files"`
 	Status        CodeGenStatus `json:"status"`
+	ExecutionID   uuid.UUID     `json:"execution_id,omitempty"`
+	Output        string        `json:"output,omitempty"`
 	EstimatedTime int           `json:"estimated_time"`
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`

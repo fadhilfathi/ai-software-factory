@@ -145,6 +145,9 @@ type ReviewStore interface {
 	GetByID(id uuid.UUID) (*model.Review, error)
 	ListByProject(projectID uuid.UUID) ([]*model.Review, error)
 	Update(review *model.Review) error
+
+	CreateComment(comment *model.ReviewComment) error
+	ListComments(reviewID uuid.UUID) ([]*model.ReviewComment, error)
 }
 
 // DeploymentStore defines persistence operations for deployments.
@@ -179,6 +182,13 @@ type AuditLogFilter struct {
 	Limit      int
 }
 
+// TokenStore defines operations for managing short-lived tokens (e.g. refresh tokens).
+type TokenStore interface {
+	Set(key string, userID uuid.UUID, ttl int) error
+	Get(key string) (uuid.UUID, error)
+	Delete(key string) error
+}
+
 // Pagination holds pagination metadata for list responses.
 type Pagination struct {
 	Page  int `json:"page"`
@@ -201,4 +211,5 @@ type Store interface {
 	Deployments() DeploymentStore
 	Webhooks() WebhookStore
 	AuditLogs() AuditLogStore
+	Tokens() TokenStore
 }

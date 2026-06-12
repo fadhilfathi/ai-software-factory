@@ -58,7 +58,7 @@ func main() {
 		logger.Info("Using in-memory store (no DB_HOST set)")
 	}
 
-	svc := service.New(st, logger, cfg.Auth.JWTSecret)
+	svc := service.New(st, logger, cfg)
 	r := router.New(svc, cfg.CORS, cfg.RateLimit)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

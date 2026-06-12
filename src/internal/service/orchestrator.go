@@ -8,6 +8,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"go.uber.org/zap"
@@ -22,13 +23,14 @@ type AgentOrchestrator interface {
 
 type agentOrchestrator struct {
 	store      store.Store
+	config     *config.Config
 	log        *zap.Logger
 	mu         sync.Mutex
 	activePods map[string]context.CancelFunc
 	dockerCli  *client.Client
 }
 
-func NewAgentOrchestrator(s store.Store, log *zap.Logger) (AgentOrchestrator, error) {
+func NewAgentOrchestrator(s store.Store, cfg *config.Config, log *zap.Logger) (AgentOrchestrator, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create docker client: %w", err)
@@ -36,6 +38,7 @@ func NewAgentOrchestrator(s store.Store, log *zap.Logger) (AgentOrchestrator, er
 
 	return &agentOrchestrator{
 		store:      s,
+		config:     cfg,
 		log:        log,
 		activePods: make(map[string]context.CancelFunc),
 		dockerCli:  cli,
@@ -72,7 +75,7 @@ func (o *agentOrchestrator) HandleAgentFailure(agentID string) error {
 
 // SpawnAgentProcess launches an agent in an isolated environment using Docker.
 func (o *agentOrchestrator) SpawnAgentProcess(ctx context.Context, agent *model.Agent) error {
-	o.log.Info("Spawning agent container", zap.String("agent_id", agent.ID.String()))
+	o.log.Info("Spawning agent container", zap.String("agent_id", agent.ID.String()), zap.String("runtime", o.config.Agent.Runtime))
 
 	containerName := fmt.Sprintf("agent-%s", agent.ID)
 	
@@ -83,12 +86,17 @@ func (o *agentOrchestrator) SpawnAgentProcess(ctx context.Context, agent *model.
 			fmt.Sprintf("AGENT_ID=%s", agent.ID),
 		},
 	}, &container.HostConfig{
-		// Enforce isolation by limiting resources and potentially security
+		Runtime: o.config.Agent.Runtime,
+		// Enforce isolation by limiting resources and security
 		Resources: container.Resources{
-			Memory: 512 * 1024 * 1024, // 512MB limit
-			CPUQuota: 50000,          // 0.5 CPU
+			Memory:   o.config.Agent.MemoryLimit,
+			CPUQuota: o.config.Agent.CPULimit,
 		},
-		AutoRemove: true, // Clean up container after it exits
+		AutoRemove:     true, // Clean up container after it exits
+		ReadonlyRootfs: true, // Prevent writing to root filesystem
+		CapDrop:        []string{"ALL"},
+		SecurityOpt:    []string{"no-new-privileges"},
+		NetworkMode:    "none", // Disable networking for maximum isolation
 	}, nil, nil, containerName)
 	
 	if err != nil {

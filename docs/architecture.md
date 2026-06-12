@@ -30,8 +30,8 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘          │
 │       │            │            │            │                   │
 │  ┌────┴─────┐ ┌────┴─────┐ ┌────┴─────┐ ┌────┴─────┐          │
-│  │   Task   │ │  Deploy  │ │Notifica- │ │  User    │          │
-│  │ Service  │ │ Service  │ │tion Svc  │ │ Service  │          │
+│  │   Task   │ │ Execution│ │Notifica- │ │  User    │          │
+│  │ Service  │ │ Sandbox  │ │tion Svc  │ │ Service  │          │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
 │                                                                  │
 │  ┌──────────┐ ┌──────────┐                                      │
@@ -351,6 +351,58 @@ User drags task card → DndContext.onDragEnd
 
 ---
 
+## Agent Orchestration
+
+### Agent Lifecycle
+Agents are specialized AI workers managed by the `AgentOrchestrator`.
+
+```
+    ┌──────────┐
+    │ Spawning │  Agent is being created / initialized
+    └────┬─────┘
+         │
+         ▼
+    ┌──────────┐
+    │   Idle   │  Agent is ready and waiting for work
+    └────┬─────┘
+         │
+         ▼
+    ┌──────────┐      ┌───────────┐
+    │ Working  │──────│ Completed │  Agent finished all tasks
+    └──────────┘      └───────────┘
+         │
+         ▼
+    ┌──────────┐
+    │  Failed  │  Agent encountered an unrecoverable error
+    └──────────┘
+```
+
+### Execution Lifecycle
+An execution records the lifecycle of an agent working on a specific task.
+
+- **Pending**: Created but not yet started.
+- **Running**: Agent is actively working in a sandbox.
+- **Completed**: Task finished successfully.
+- **Failed**: Agent encountered an error or gate failure.
+
+---
+
+## Quality & Security Gates
+
+Autonomous code generation introduces risks that are mitigated via a multi-layered validation pipeline.
+
+### The Pipeline
+1. **Linter Gate**: Static analysis for style and common errors (`golangci-lint`, `eslint`).
+2. **Complexity Gate**: Ensuring code maintainability (Cyclomatic Complexity < 10).
+3. **Security Gate (SAST)**: Scanning for vulnerabilities (`gosec`, `semgrep`).
+4. **Test Gate**: Validation of functional correctness (Min 80% coverage for changes).
+5. **AI Review Gate**: Deep architectural and logic review by Reviewer agents (Score >= 80/100).
+
+### Enforcement
+If any gate fails, the agent is notified with logs and attempts a fix (max 3 retries). Success is required for promotion to the next stage.
+
+---
+
 ## Security Architecture
 
 For a comprehensive formalization of the platform's security controls, identity management, and compliance standards, see the [Security Architecture](./security.md) document.
@@ -373,11 +425,14 @@ User → Login (OAuth/Email) → Auth Service → JWT Token
 - Secrets managed via HashiCorp Vault or cloud KMS
 
 ### Agent Security
-- Agents run in isolated containers
-- Limited filesystem access (only project workspace)
-- No network access except approved APIs
-- Resource limits (CPU, memory, execution time)
-- Output sanitization before user display
+- **Sandbox Isolation:** Agents execute code in **gVisor (`runsc`)** containers for strong kernel-level isolation.
+- **Hardening:**
+  - **Read-only Root FS:** Prevents persistence and tampering.
+  - **Capability Drop:** `CapDrop: ["ALL"]` ensures least privilege.
+  - **Network Isolation:** No network access by default during code execution.
+  - **Resource Limits:** Strict CPU and memory quotas to prevent DoS.
+- **Output Sanitization:** All agent output is sanitized before being displayed to the user.
+
 
 ---
 

@@ -51,6 +51,7 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 
 		v1.POST("/auth/login", auth.Login)
 		v1.POST("/auth/refresh", auth.Refresh)
+		v1.POST("/auth/logout", auth.Logout)
 
 		v1.POST("/projects", projects.Create)
 		v1.GET("/projects", projects.List)

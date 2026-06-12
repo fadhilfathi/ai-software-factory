@@ -24,8 +24,9 @@ func (s *postgresStore) AgentRuns() store.AgentRunStore       { return &postgres
 func (s *postgresStore) Executions() store.ExecutionStore     { return &postgresExecutionStore{s} }
 func (s *postgresStore) Deliverables() store.DeliverableStore { return &postgresDeliverableStore{s} }
 func (s *postgresStore) Tasks() store.TaskStore               { return &postgresTaskStore{s} }
-func (s *postgresStore) Code() store.CodeStore                { return s.fallback.Code() }
-func (s *postgresStore) Reviews() store.ReviewStore           { return s.fallback.Reviews() }
+func (s *postgresStore) Code() store.CodeStore                { return &postgresCodeStore{s} }
+func (s *postgresStore) Reviews() store.ReviewStore           { return &postgresReviewStore{s} }
 func (s *postgresStore) Deployments() store.DeploymentStore   { return s.fallback.Deployments() }
 func (s *postgresStore) Webhooks() store.WebhookStore         { return s.fallback.Webhooks() }
 func (s *postgresStore) AuditLogs() store.AuditLogStore       { return &postgresAuditLogStore{s} }
+func (s *postgresStore) Tokens() store.TokenStore           { return s.fallback.Tokens() }

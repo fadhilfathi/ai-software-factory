@@ -78,14 +78,21 @@ For technical details, see [Redis Refresh Store Spec](./redis-refresh-store-spec
 
 ## 6. Agent Security
 
-### 6.1 Process Isolation
-Agents execute code in isolated environments to prevent "jailbreaking" or lateral movement.
-- **Code Service Sandbox:** Uses `gVisor` or `Firecracker` microVMs for strong isolation during code execution and testing.
-- **Capabilities:** Agents are granted "least privilege" capabilities. For example, a `Developer` agent cannot access deployment secrets.
+### 6.1 Execution Sandbox (gVisor)
+Agents execute code in a highly isolated environment to prevent sandbox escapes and lateral movement. The platform utilizes **gVisor (`runsc`)** as the primary container runtime for untrusted code execution.
+
+| Control | Implementation | Purpose |
+|---------|----------------|---------|
+| **Runtime Isolation** | gVisor (`runsc`) | Intercepts syscalls to prevent kernel exploits |
+| **Resource Limits** | Memory/CPU Cgroups | Prevents Denial-of-Service via resource exhaustion |
+| **Read-only FS** | `ReadonlyRootfs: true` | Prevents environment persistence and tampering |
+| **Capability Drop** | `CapDrop: ["ALL"]` | Removes all root-like privileges within the container |
+| **Network Isolation** | `NetworkMode: "none"` | Prevents data exfiltration and lateral attacks |
+| **Privilege Control** | `no-new-privileges` | Prevents processes from gaining new privileges |
 
 ### 6.2 Resource Quotas
-- **Token Budgets:** LLM usage is capped per agent run to prevent cost-based denial-of-service.
-- **Runtime Limits:** Agent executions have strict timeouts (e.g., 5 minutes) to prevent orphaned processes from consuming CPU/Memory.
+- **Token Budgets:** LLM usage is capped per agent run to prevent cost-based DoS.
+- **Runtime Timeouts:** Executions are wrapped in Go `context.WithTimeout` (default 5m) to prevent hanging processes.
 
 ---
 

@@ -6,6 +6,7 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -37,13 +38,13 @@ func (s *DeploymentService) TriggerDeployment(req TriggerDeploymentRequest) (*mo
 	}
 
 	// Verify project exists
-	if _, err := s.store.Projects().GetByID(req.ProjectID); err != nil {
+	if _, err := s.store.Projects().GetByID(uuid.MustParse(req.ProjectID)); err != nil {
 		return nil, notFound("Project not found")
 	}
 
 	now := time.Now().UTC()
 	deployment := &model.Deployment{
-		ID:            generateID("deploy"),
+		ID:            uuid.New().String(),
 		ProjectID:     req.ProjectID,
 		Environment:   model.Environment(req.Environment),
 		Branch:        req.Branch,
@@ -84,7 +85,7 @@ func (s *DeploymentService) RollbackDeployment(id string) (*model.Deployment, *E
 
 	now := time.Now().UTC()
 	rollback := &model.Deployment{
-		ID:            generateID("deploy"),
+		ID:            uuid.New().String(),
 		ProjectID:     existing.ProjectID,
 		Environment:   existing.Environment,
 		Status:        model.DeployRollingBack,

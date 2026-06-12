@@ -73,3 +73,22 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		"expires_in":   result.ExpiresIn,
 	})
 }
+
+// Logout handles POST /auth/logout.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		writeJSON(c, http.StatusOK, gin.H{"message": "Already logged out"})
+		return
+	}
+
+	if svcErr := h.svc.Logout(refreshToken); svcErr != nil {
+		writeServiceError(c, svcErr)
+		return
+	}
+
+	// Clear the refresh token cookie
+	c.SetCookie("refresh_token", "", -1, "/", "", true, true)
+
+	writeJSON(c, http.StatusOK, gin.H{"message": "Logged out successfully"})
+}

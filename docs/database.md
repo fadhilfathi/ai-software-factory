@@ -180,19 +180,123 @@ CREATE INDEX idx_projects_status ON projects(status);
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
+    role VARCHAR(50) NOT NULL,
     status VARCHAR(50) DEFAULT 'spawning',
-    config JSONB DEFAULT '{}',
-    session_id VARCHAR(255),
     model VARCHAR(100),
-    tokens_used INTEGER DEFAULT 0,
-    started_at TIMESTAMPTZ DEFAULT NOW(),
-    ended_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    provider VARCHAR(50),
+    capabilities TEXT[],
+    config JSONB DEFAULT '{}',
+    current_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+    tasks_done INTEGER DEFAULT 0,
+    uptime INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_agents_project ON agents(project_id);
 CREATE INDEX idx_agents_status ON agents(status);
+```
+
+### agent_runs
+```sql
+CREATE TABLE agent_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL,
+    started_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+    error TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### code_gen_requests
+```sql
+CREATE TABLE code_gen_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+    specification TEXT NOT NULL,
+    files TEXT[],
+    status VARCHAR(20) NOT NULL,
+    execution_id UUID,
+    output TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### commits
+```sql
+CREATE TABLE commits (
+    sha VARCHAR(40) PRIMARY KEY,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    branch VARCHAR(100),
+    message TEXT,
+    author VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### project_files
+```sql
+CREATE TABLE project_files (
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    content TEXT NOT NULL,
+    language VARCHAR(50),
+    size INTEGER,
+    last_modified TIMESTAMPTZ DEFAULT NOW(),
+    modified_by VARCHAR(100),
+    PRIMARY KEY (project_id, path)
+);
+```
+
+### reviews (Updated)
+```sql
+CREATE TABLE reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    commit_sha VARCHAR(40) REFERENCES commits(sha),
+    reviewer_type VARCHAR(20) NOT NULL, -- 'automated', 'agent'
+    reviewer_id UUID, -- References agents(id) or users(id)
+    status VARCHAR(20) NOT NULL,
+    result VARCHAR(20),
+    score FLOAT DEFAULT 0,
+    metrics JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### review_issues
+```sql
+CREATE TABLE review_issues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    review_id UUID REFERENCES reviews(id) ON DELETE CASCADE,
+    severity VARCHAR(20) NOT NULL,
+    file TEXT,
+    line INTEGER,
+    message TEXT NOT NULL,
+    suggestion TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### review_comments
+```sql
+CREATE TABLE review_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    review_id UUID REFERENCES reviews(id) ON DELETE CASCADE,
+    file TEXT,
+    line INTEGER,
+    author_id UUID NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
 ### tasks

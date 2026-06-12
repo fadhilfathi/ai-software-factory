@@ -111,55 +111,60 @@ POST   /v1/projects/{id}/decompose   # Trigger task decomposition
 ## 3. Code Service
 
 ### Responsibility
-- Code generation from natural language or formal specs (OpenAPI, etc.)
-- Incremental code modifications (features, fixes, refactoring)
-- Multi-language support (MVP: TS, Python, Go, Rust)
-- Infrastructure as Code (IaC) generation
-- Project file management and static analysis
-- Integration with Git for commits and branch management
+- Manage code generation requests (`CodeGenRequest`) and their lifecycle.
+- Orchestrate sandbox execution for code validation and testing.
+- Provide Git-like operations (commits, branches, diffs) via direct filesystem manipulation.
+- Maintain project file state, metadata, and language detection.
+- Perform static analysis (complexity, linting) and metric extraction.
 
 ### API Surface
 ```
 POST   /v1/code/generate             # Request code generation for a task
-GET    /v1/code/{projectId}/files/*path  # Retrieve file content
-POST   /v1/code/{projectId}/commits  # Create a new commit
-GET    /v1/code/{projectId}/diff     # Get diff between commits/branches
+GET    /v1/code/{projectId}/files    # List/Search files in a project
+GET    /v1/code/{projectId}/files/*path  # Retrieve content and metadata of a specific file
+POST   /v1/code/{projectId}/commits  # Create a new commit (persists files)
+GET    /v1/code/{projectId}/diff     # Get diff between commits/branches or working tree
 GET    /v1/code/{projectId}/analysis # Static analysis and complexity report
 ```
-
-### Data Ownership
-- Code generation requests and statuses
-- Project file metadata and cached content
-- Analysis reports
 
 ---
 
 ## 4. Review Service
 
 ### Responsibility
-- Automated code review (Correctness, Security, Performance)
-- Standards and conventions enforcement
-- Quality gate management for PRs and code batches
-- Orchestration of human-in-the-loop review workflows
-- Architecture Decision Record (ADR) review and management
+- Manage the automated and agent-driven code review lifecycle.
+- Enforce quality gates (test coverage, security vulnerabilities, complexity).
+- Orchestrate `reviewer` agents for deep semantic analysis.
+- Provide a collaborative feedback loop via `ReviewComment` and `ReviewIssue` tracking.
+- Manage architectural review workflows and standards enforcement.
 
 ### API Surface
 ```
-POST   /v1/reviews                   # Request review for a commit
-GET    /v1/reviews/{id}              # Get review findings and status
-POST   /v1/reviews/{id}/comments     # Add inline comments
-PATCH  /v1/reviews/{id}/status       # Approve or request changes
-GET    /v1/reviews/project/{projectId} # List project reviews
+POST   /v1/reviews                   # Start a new review for a commit
+GET    /v1/reviews/{id}              # Get review findings, score, and status
+POST   /v1/reviews/{id}/comments     # Add inline comments to a review
+GET    /v1/reviews/{id}/comments     # List all comments for a review
+PATCH  /v1/reviews/{id}/status       # Manually update or override review status
+GET    /v1/reviews/project/{projectId} # List all reviews for a project
 ```
-
-### Data Ownership
-- Review results, findings, and inline comments
-- Quality gate configurations
-- Review analytics and history
 
 ---
 
-## 5. Agent Orchestrator
+## 5. Execution Sandbox (New)
+
+### Responsibility
+- Provide secure, isolated runtime environments using **gVisor (`runsc`)**.
+- Enforce strict security controls: No networking, Read-only FS, Capability dropping.
+- Execute untrusted agent code for validation, unit testing, and linting.
+- Capture execution logs, metrics, and exit codes for service feedback.
+
+### Data Ownership
+- Temporary workspaces and execution artifacts.
+- Execution logs and security audit trails.
+
+---
+
+## 6. Agent Orchestrator
 
 ### Responsibility
 - Agent lifecycle management (spawn, monitor, shutdown)

@@ -22,10 +22,12 @@ type memoryStore struct {
 	codeGens    map[string]*model.CodeGenRequest
 	files       map[string]*model.ProjectFile // key: "projectID:path"
 	commits     map[string]*model.Commit      // key: "projectID:sha"
-	reviews     map[string]*model.Review
-	deployments map[string]*model.Deployment
+	reviews        map[string]*model.Review
+	reviewComments map[string]*model.ReviewComment
+	deployments    map[string]*model.Deployment
 	webhooks    map[string]*model.Webhook
 	auditLogs   map[string]*model.AuditLog
+	tokens      map[string]uuid.UUID
 }
 
 // NewMemoryStore creates a new in-memory store ready for use.
@@ -41,11 +43,13 @@ func NewMemoryStore() Store {
 		tasks:        make(map[string]*model.Task),
 		codeGens:    make(map[string]*model.CodeGenRequest),
 		files:       make(map[string]*model.ProjectFile),
-		commits:     make(map[string]*model.Commit),
-		reviews:     make(map[string]*model.Review),
-		deployments: make(map[string]*model.Deployment),
+		commits:        make(map[string]*model.Commit),
+		reviews:        make(map[string]*model.Review),
+		reviewComments: make(map[string]*model.ReviewComment),
+		deployments:    make(map[string]*model.Deployment),
 		webhooks:    make(map[string]*model.Webhook),
 		auditLogs:   make(map[string]*model.AuditLog),
+		tokens:      make(map[string]uuid.UUID),
 	}
 }
 
@@ -61,6 +65,7 @@ func (m *memoryStore) Reviews() ReviewStore         { return &memoryReviewStore{
 func (m *memoryStore) Deployments() DeploymentStore { return &memoryDeploymentStore{m} }
 func (m *memoryStore) Webhooks() WebhookStore       { return &memoryWebhookStore{m} }
 func (m *memoryStore) AuditLogs() AuditLogStore     { return &memoryAuditLogStore{m} }
+func (m *memoryStore) Tokens() TokenStore           { return &memoryTokenStore{m} }
 
 // --- User Store ---
 
@@ -646,24 +651,24 @@ type memoryCodeStore struct{ m *memoryStore }
 func (s *memoryCodeStore) CreateCodeGen(r *model.CodeGenRequest) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.codeGens[r.ID]; exists {
+	if _, exists := s.m.codeGens[r.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.codeGens[r.ID] = r
+	s.m.codeGens[r.ID.String()] = r
 	return nil
 }
 
-func (s *memoryCodeStore) GetCodeGenByID(id string) (*model.CodeGenRequest, error) {
+func (s *memoryCodeStore) GetCodeGenByID(id uuid.UUID) (*model.CodeGenRequest, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	r, ok := s.m.codeGens[id]
+	r, ok := s.m.codeGens[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
 	return r, nil
 }
 
-func (s *memoryCodeStore) ListCodeGenByProject(projectID string) ([]*model.CodeGenRequest, error) {
+func (s *memoryCodeStore) ListCodeGenByProject(projectID uuid.UUID) ([]*model.CodeGenRequest, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	var result []*model.CodeGenRequest
@@ -681,25 +686,25 @@ func (s *memoryCodeStore) ListCodeGenByProject(projectID string) ([]*model.CodeG
 func (s *memoryCodeStore) UpdateCodeGen(r *model.CodeGenRequest) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.codeGens[r.ID]; !ok {
+	if _, ok := s.m.codeGens[r.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.codeGens[r.ID] = r
+	s.m.codeGens[r.ID.String()] = r
 	return nil
 }
 
 func (s *memoryCodeStore) SaveFile(f *model.ProjectFile) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	key := f.ProjectID + ":" + f.Path // store under project:path key
+	key := f.ProjectID.String() + ":" + f.Path // store under project:path key
 	s.m.files[key] = f
 	return nil
 }
 
-func (s *memoryCodeStore) GetFile(projectID, path string) (*model.ProjectFile, error) {
+func (s *memoryCodeStore) GetFile(projectID uuid.UUID, path string) (*model.ProjectFile, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	key := projectID + ":" + path
+	key := projectID.String() + ":" + path
 	f, ok := s.m.files[key]
 	if !ok {
 		return nil, ErrNotFound
@@ -707,7 +712,7 @@ func (s *memoryCodeStore) GetFile(projectID, path string) (*model.ProjectFile, e
 	return f, nil
 }
 
-func (s *memoryCodeStore) ListFiles(projectID string) ([]*model.ProjectFile, error) {
+func (s *memoryCodeStore) ListFiles(projectID uuid.UUID) ([]*model.ProjectFile, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	var result []*model.ProjectFile
@@ -722,7 +727,7 @@ func (s *memoryCodeStore) ListFiles(projectID string) ([]*model.ProjectFile, err
 func (s *memoryCodeStore) CreateCommit(c *model.Commit) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	key := c.ProjectID + ":" + c.SHA
+	key := c.ProjectID.String() + ":" + c.SHA
 	if _, exists := s.m.commits[key]; exists {
 		return ErrAlreadyExists
 	}
@@ -730,10 +735,10 @@ func (s *memoryCodeStore) CreateCommit(c *model.Commit) error {
 	return nil
 }
 
-func (s *memoryCodeStore) GetCommit(projectID, sha string) (*model.Commit, error) {
+func (s *memoryCodeStore) GetCommit(projectID uuid.UUID, sha string) (*model.Commit, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	key := projectID + ":" + sha
+	key := projectID.String() + ":" + sha
 	c, ok := s.m.commits[key]
 	if !ok {
 		return nil, ErrNotFound
@@ -741,12 +746,12 @@ func (s *memoryCodeStore) GetCommit(projectID, sha string) (*model.Commit, error
 	return c, nil
 }
 
-func (s *memoryCodeStore) ListCommits(projectID string) ([]*model.Commit, error) {
+func (s *memoryCodeStore) ListCommits(projectID uuid.UUID) ([]*model.Commit, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	var result []*model.Commit
 	for key, c := range s.m.commits {
-		if strings.HasPrefix(key, projectID+":") {
+		if strings.HasPrefix(key, projectID.String()+":") {
 			result = append(result, c)
 		}
 	}
@@ -763,10 +768,10 @@ type memoryReviewStore struct{ m *memoryStore }
 func (s *memoryReviewStore) Create(r *model.Review) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.reviews[r.ID]; exists {
+	if _, exists := s.m.reviews[r.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.reviews[r.ID] = r
+	s.m.reviews[r.ID.String()] = r
 	return nil
 }
 
@@ -780,7 +785,7 @@ func (s *memoryReviewStore) GetByID(id uuid.UUID) (*model.Review, error) {
 	return r, nil
 }
 
-func (s *memoryReviewStore) ListByProject(projectID string) ([]*model.Review, error) {
+func (s *memoryReviewStore) ListByProject(projectID uuid.UUID) ([]*model.Review, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	var result []*model.Review
@@ -798,11 +803,36 @@ func (s *memoryReviewStore) ListByProject(projectID string) ([]*model.Review, er
 func (s *memoryReviewStore) Update(r *model.Review) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.reviews[r.ID]; !ok {
+	if _, ok := s.m.reviews[r.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.reviews[r.ID] = r
+	s.m.reviews[r.ID.String()] = r
 	return nil
+}
+
+func (s *memoryReviewStore) CreateComment(c *model.ReviewComment) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	if _, exists := s.m.reviewComments[c.ID.String()]; exists {
+		return ErrAlreadyExists
+	}
+	s.m.reviewComments[c.ID.String()] = c
+	return nil
+}
+
+func (s *memoryReviewStore) ListComments(reviewID uuid.UUID) ([]*model.ReviewComment, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	var result []*model.ReviewComment
+	for _, c := range s.m.reviewComments {
+		if c.ReviewID == reviewID {
+			result = append(result, c)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+	return result, nil
 }
 
 // --- Deployment Store ---
@@ -925,47 +955,34 @@ func (s *memoryAuditLogStore) Create(l *model.AuditLog) error {
 	return nil
 }
 
-func (s *memoryAuditLogStore) List(filter AuditLogFilter) ([]*model.AuditLog, int, error) {
+	return filtered[start:end], total, nil
+}
+
+// --- Token Store ---
+
+type memoryTokenStore struct{ m *memoryStore }
+
+func (s *memoryTokenStore) Set(key string, userID uuid.UUID, ttl int) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	s.m.tokens[key] = userID
+	return nil
+}
+
+func (s *memoryTokenStore) Get(key string) (uuid.UUID, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
+	userID, ok := s.m.tokens[key]
+	if !ok {
+		return uuid.Nil, ErrNotFound
+	}
+	return userID, nil
+}
 
-	var filtered []*model.AuditLog
-	for _, l := range s.m.auditLogs {
-		if filter.EntityType != "" && l.EntityType != filter.EntityType {
-			continue
-		}
-		if filter.EntityID != uuid.Nil && l.EntityID != filter.EntityID {
-			continue
-		}
-		if filter.UserID != uuid.Nil {
-			if l.UserID == nil || *l.UserID != filter.UserID {
-				continue
-			}
-		}
-		filtered = append(filtered, l)
-	}
-
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
-	})
-
-	total := len(filtered)
-	page, limit := filter.Page, filter.Limit
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 20
-	}
-	start := (page - 1) * limit
-	if start >= len(filtered) {
-		return []*model.AuditLog{}, total, nil
-	}
-	end := start + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-
-	return filtered[start:end], total, nil
+func (s *memoryTokenStore) Delete(key string) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	delete(s.m.tokens, key)
+	return nil
 }
 

@@ -27,6 +27,7 @@ type authService struct {
 type AuthService interface {
 	Login(req LoginRequest) (*LoginResult, *Error)
 	Refresh(refreshToken string) (*LoginResult, *Error)
+	Logout(refreshToken string) *Error
 	ValidateToken(tokenString string) (*Claims, error)
 	ValidateRefreshToken(refreshToken string) (uuid.UUID, error)
 }
@@ -87,6 +88,13 @@ func (s *authService) Login(req LoginRequest) (*LoginResult, *Error) {
 		return nil, internalError("Failed to generate token")
 	}
 
+	// Store refresh token hash for revocation support (TTL: 7 days)
+	tokenKey := "auth:refresh_token:" + hashToken(refreshToken)
+	if err := s.store.Tokens().Set(tokenKey, user.ID, 7*24*3600); err != nil {
+		s.log.Error("failed to store refresh token hash", zap.Error(err))
+		// Continue even if storage fails; persistence is best-effort for now
+	}
+
 	return &LoginResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -120,11 +128,31 @@ func (s *authService) Refresh(refreshToken string) (*LoginResult, *Error) {
 		return nil, internalError("Failed to generate token")
 	}
 
+	// Store new refresh token hash
+	tokenKey := "auth:refresh_token:" + hashToken(newRefreshToken)
+	if err := s.store.Tokens().Set(tokenKey, user.ID, 7*24*3600); err != nil {
+		s.log.Error("failed to store new refresh token hash", zap.Error(err))
+	}
+
+	// Revoke old refresh token hash
+	oldTokenKey := "auth:refresh_token:" + hashToken(refreshToken)
+	_ = s.store.Tokens().Delete(oldTokenKey)
+
 	return &LoginResult{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 		ExpiresIn:    900,
 	}, nil
+}
+
+// Logout revokes a refresh token.
+func (s *authService) Logout(refreshToken string) *Error {
+	tokenKey := "auth:refresh_token:" + hashToken(refreshToken)
+	if err := s.store.Tokens().Delete(tokenKey); err != nil {
+		s.log.Error("failed to revoke refresh token", zap.Error(err))
+		return internalError("Failed to logout")
+	}
+	return nil
 }
 
 // hashForLog returns a truncated hash of email for logging (prevents PII in logs)
@@ -240,6 +268,12 @@ func (s *authService) ValidateRefreshToken(refreshToken string) (uuid.UUID, erro
 	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
 		return uuid.Nil, unauthorized("Invalid token user ID format")
+	}
+
+	// Check if token exists in revocation store
+	tokenKey := "auth:refresh_token:" + hashToken(refreshToken)
+	if _, err := s.store.Tokens().Get(tokenKey); err != nil {
+		return uuid.Nil, unauthorized("Token revoked or expired")
 	}
 
 	return userID, nil

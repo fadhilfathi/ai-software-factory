@@ -422,73 +422,199 @@ HTTP status codes: `400`, `401`, `404`, `409`, `422`, `500`
 
 ## Agents
 
-### Spawn Agent
+### Create Agent
 ```
-POST /v1/agents/spawn
+POST /v1/agents
 
 Request:
 {
-  "project_id": "proj_abc123",
+  "name": "Code Assistant",
   "type": "developer",
-  "config": {
-    "model": "gpt-4",
-    "temperature": 0.3
-  }
+  "role": "developer",
+  "model": "gpt-4",
+  "provider": "openai",
+  "capabilities": ["code_implementation"]
 }
 
 Response (201):
 {
-  "id": "agent_dev_001",
+  "id": "a1b2c3d4-...",
+  "name": "Code Assistant",
   "type": "developer",
-  "status": "spawning",
-  "project_id": "proj_abc123"
+  "role": "developer",
+  "model": "gpt-4",
+  "provider": "openai",
+  "capabilities": ["code_implementation"],
+  "status": "idle",
+  "created_at": "2026-06-12T10:00:00Z",
+  "updated_at": "2026-06-12T10:00:00Z"
 }
 ```
 
-### List Active Agents
+Validation:
+- `name` is required
+- `role` is required
+- `capabilities` defaults to type-specific defaults if omitted
+
+### List Agents
 ```
-GET /v1/agents?project_id=proj_abc123
+GET /v1/agents?status=idle&role=developer&page=1&limit=20
 
 Response:
 {
   "data": [
     {
-      "id": "agent_dev_001",
-      "type": "developer",
-      "status": "working",
-      "current_task": "task_001",
-      "tasks_completed": 5,
-      "uptime": 3600
+      "id": "a1b2c3d4-...",
+      "name": "Code Assistant",
+      "role": "developer",
+      "status": "idle",
+      ...
     }
-  ]
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "pages": 1
+  }
 }
 ```
 
-### Assign Task to Agent
+Query parameters:
+- `status` — `idle`, `working`, `spawning`, `completed`, `failed`
+- `role` — `pm`, `architect`, `developer`, `reviewer`, `qa`, `devops`
+
+### Get Agent Details
 ```
-POST /v1/agents/:id/assign
+GET /v1/agents/:id
+```
+
+### Update Agent
+```
+PUT /v1/agents/:id
 
 Request:
 {
-  "task_id": "task_001",
-  "priority": "high",
-  "context": {
-    "files": ["src/api/users.ts", "src/models/user.ts"]
-  }
+  "name": "Senior Code Assistant",
+  "model": "gpt-4-turbo",
+  "status": "idle"
 }
+```
 
-Response:
-{
-  "id": "agent_dev_001",
-  "task_id": "task_001",
-  "status": "working",
-  "estimated_completion": "2026-06-10T11:00:00Z"
-}
+### Delete Agent
+```
+DELETE /v1/agents/:id
+
+Response: 204 No Content
 ```
 
 ---
 
+## Task Assignment
+
+### Assign Task to Agent
+```
+POST /v1/tasks/:taskId/assign
+
+Request:
+{
+  "agent_id": "a1b2c3d4-..."
+}
+
+Response (200):
+{
+  "execution_id": "e5f6a7b8-...",
+  "task_id": "task-uuid-here",
+  "agent_id": "a1b2c3d4-...",
+  "status": "running",
+  "started_at": "2026-06-12T10:00:00Z"
+}
+```
+
+Validation:
+- Agent must be `idle`.
+- Agent capabilities must match task requirements.
+- Updates task status to `in_progress` and agent status to `working`.
+
+---
+
+## Executions
+
+An execution records the lifecycle of an agent working on a task.
+
+### List Executions
+```
+GET /v1/executions?task_id=<uuid>&agent_id=<uuid>&page=1&limit=20
+```
+
+### Get Execution Details
+```
+GET /v1/executions/:id
+```
+
+### Update Execution Status
+```
+PATCH /v1/executions/:id/status
+
+Request:
+{
+  "status": "completed"
+}
+```
+
+Status Transitions:
+- `pending` → `running`
+- `running` → `completed`, `failed`
+
+---
+
+## Deliverables
+
+Deliverables are artifacts produced by an agent while working on a task.
+
+### Create Deliverable
+```
+POST /v1/deliverables
+
+Request:
+{
+  "task_id": "task-uuid-here",
+  "agent_id": "a1b2c3d4-...",
+  "title": "Authentication API Design",
+  "content": "..."
+}
+
+Response (201):
+{
+  "id": "d1e2f3a4-...",
+  "version": 1,
+  "created_at": "2026-06-12T10:00:00Z",
+  ...
+}
+```
+
+### List Deliverables
+```
+GET /v1/deliverables?task_id=<uuid>
+GET /v1/deliverables?agent_id=<uuid>
+```
+
+### Update Deliverable
+```
+PUT /v1/deliverables/:id
+
+Request:
+{
+  "content": "Updated content..."
+}
+```
+Version auto-increments on each update.
+
+---
+
 ## Code
+
+The Code Service manages the codebase, generation requests, and Git operations.
 
 ### Generate Code
 ```
@@ -496,18 +622,23 @@ POST /v1/code/generate
 
 Request:
 {
-  "project_id": "proj_abc123",
-  "task_id": "task_001",
+  "project_id": "proj-uuid",
+  "task_id": "task-uuid",
   "specification": "Implement JWT authentication with Gin...",
-  "files": ["src/auth/login.ts", "src/auth/register.ts"]
+  "files": ["internal/handler/auth.go"]
 }
 
 Response (202):
 {
-  "id": "code_gen_001",
+  "id": "code-gen-uuid",
   "status": "generating",
-  "estimated_time": 300
+  "execution_id": "exec-uuid"
 }
+```
+
+### List Project Files
+```
+GET /v1/code/:projectId/files
 ```
 
 ### Get File Content
@@ -516,12 +647,11 @@ GET /v1/code/:projectId/files/*path
 
 Response:
 {
-  "path": "src/auth/login.ts",
-  "content": "import jwt from 'jsonwebtoken'...",
-  "language": "typescript",
+  "path": "internal/handler/auth.go",
+  "content": "package handler...",
+  "language": "go",
   "size": 2048,
-  "last_modified": "2026-06-10T10:45:00Z",
-  "modified_by": "agent_dev_001"
+  "last_modified": "2026-06-12T10:45:00Z"
 }
 ```
 
@@ -534,23 +664,27 @@ Request:
   "branch": "feature/auth",
   "message": "feat: implement JWT authentication",
   "files": [
-    { "path": "src/auth/login.ts", "content": "..." },
-    { "path": "src/auth/register.ts", "content": "..." }
+    { "path": "internal/handler/auth.go", "content": "..." }
   ]
 }
-
-Response (201):
-{
-  "sha": "abc123def456",
-  "message": "feat: implement JWT authentication",
-  "author": "agent_dev_001",
-  "created_at": "2026-06-10T10:50:00Z"
-}
 ```
+
+### Get Diff
+```
+GET /v1/code/:projectId/diff?base=sha1&head=sha256
+```
+
+### Get Static Analysis
+```
+GET /v1/code/:projectId/analysis
+```
+Returns complexity, linting, and maintainability metrics.
 
 ---
 
 ## Reviews
+
+The Review Service manages the code review lifecycle and quality gates.
 
 ### Create Review Request
 ```
@@ -558,44 +692,75 @@ POST /v1/reviews
 
 Request:
 {
-  "project_id": "proj_abc123",
+  "project_id": "proj-uuid",
   "commit_sha": "abc123def456",
   "reviewer_type": "automated"
 }
 
 Response (201):
 {
-  "id": "review_001",
+  "id": "review-uuid",
   "status": "in_progress",
-  "reviewer": "review_agent_001"
+  "reviewer_id": "agent-uuid"
 }
 ```
 
-### Get Review Results
+### Get Review Details
 ```
 GET /v1/reviews/:id
 
 Response:
 {
-  "id": "review_001",
+  "id": "review-uuid",
   "status": "completed",
   "result": "approved",
-  "score": 8.5,
+  "score": 85,
   "issues": [
     {
       "severity": "warning",
-      "file": "src/auth/login.ts",
+      "file": "internal/handler/auth.go",
       "line": 42,
-      "message": "Consider adding rate limiting to login endpoint",
-      "suggestion": "Add gin-rate-limit middleware"
+      "message": "Consider adding rate limiting",
+      "suggestion": "..."
     }
   ],
   "metrics": {
-    "complexity": "low",
-    "test_coverage": 92,
-    "duplications": 0
+    "complexity": 8,
+    "test_coverage": 92
   }
 }
+```
+
+### Add Review Comment
+```
+POST /v1/reviews/:id/comments
+
+Request:
+{
+  "file": "internal/handler/auth.go",
+  "line": 10,
+  "content": "Good use of the Gin context."
+}
+```
+
+### List Review Comments
+```
+GET /v1/reviews/:id/comments
+```
+
+### Update Review Status
+```
+PATCH /v1/reviews/:id/status
+
+Request:
+{
+  "status": "approved"
+}
+```
+
+### List Project Reviews
+```
+GET /v1/reviews/project/:projectId
 ```
 
 ---
