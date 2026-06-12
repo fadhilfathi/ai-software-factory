@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"go.uber.org/zap"
 )
 
@@ -23,9 +23,9 @@ type Services struct {
 }
 
 // New creates all domain services backed by the given store and logger.
-func New(s store.Store, log *zap.Logger) *Services {
+func New(s store.Store, log *zap.Logger, jwtSecret string) *Services {
 	return &Services{
-		Auth:       NewAuthService(s, log),
+		Auth:       NewAuthService(s, log, jwtSecret),
 		User:       NewUserService(s, log),
 		Project:    NewProjectService(s, log),
 		Agent:      NewAgentService(s, log),
@@ -37,9 +37,9 @@ func New(s store.Store, log *zap.Logger) *Services {
 	}
 }
 
-// generateID creates a unique prefixed identifier.
+// generateID creates a unique prefixed identifier using 16 bytes (128 bits) of entropy.
 func generateID(prefix string) string {
-	b := make([]byte, 8)
+	b := make([]byte, 16)
 	rand.Read(b)
 	return prefix + "_" + hex.EncodeToString(b)
 }

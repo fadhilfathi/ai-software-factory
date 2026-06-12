@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dark/Light Theme Support** — System-preference-aware theming with manual override.
 
 #### Backend
-- **Go API Server** — RESTful backend with structured logging (`log/slog`), request-scoped context, and panic recovery middleware.
+- **Golang API Server** — RESTful backend using Gin framework, structured logging (`zap`), request-scoped context, and panic recovery middleware.
 - **Router** — Path-based routing with middleware chaining (auth, rate limiting, request logging, CORS).
 - **Authentication Services** — JWT issuance/validation, API key verification, password hashing (bcrypt), refresh token rotation.
 - **User Service** — Registration flow, profile CRUD, role assignment, rate-limit tracking.
@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### DevOps & Infrastructure
 - **Docker Compose Orchestration** — Single-command startup for API, frontend, and PostgreSQL; health-check dependency ordering; layered `.env` configuration; three operation modes (full stack, native dev with Docker DB, per-service).
-- **Dockerfiles** — Multi-stage Go build (distroless runtime, layer caching), Node.js production build with npm cache optimisation.
+- **Dockerfiles** — Multi-stage Go build (distroless runtime, layer caching), Node.js frontend production build with npm cache optimisation.
 - **CI/CD Pipeline** — GitHub Actions `ci.yml` (lint → test → build → e2e smoke) on every push and PR; `deploy.yml` (build & push to GHCR → SSH deploy → health validation) on push to `main`.
 - **Deployment Scripts** — `build.sh` (Go binary + frontend assets + Docker images), `deploy.sh` (start/stop/restart/update stack with --pull support), `healthcheck.sh` (unified CLI with JSON output and watch mode).
 - **Helm Chart (Preview)** — Kubernetes deployment manifests for production-scale deployments (included in `ops/helm/`).

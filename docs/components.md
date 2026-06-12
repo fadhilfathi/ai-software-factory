@@ -149,7 +149,7 @@ Component hierarchy and state management patterns for the Living Product Vision 
       │    ├── <TextArea label="Project Description" minLength={50} />
       │    └── <ValidationHint />
       ├── <StepPanel step={2} title="Configure">
-      │    ├── <SelectInput label="Tech Stack" options={["Node.js", "Python", "Go", "Rust"]} />
+      │    ├── <SelectInput label="Tech Stack" options={["Go/Gin", "Python", "Rust"]} />
       │    ├── <SelectInput label="Deploy Target" options={["AWS", "Vercel", "Railway", "Self-hosted"]} />
       │    └── <ToggleGroup label="Agents">
       │         ├── <AgentToggle agent="pm" enabled />

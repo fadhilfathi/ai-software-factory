@@ -4,26 +4,30 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
-	"github.com/example/project/internal/store"
-	"github.com/example/project/internal/validation"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthService handles authentication and token generation.
 type AuthService struct {
-	store store.Store
-	log   *zap.Logger
+	store     store.Store
+	log       *zap.Logger
+	jwtSecret []byte
 }
 
-func NewAuthService(s store.Store, log *zap.Logger) *AuthService {
-	return &AuthService{store: s, log: log}
+func NewAuthService(s store.Store, log *zap.Logger, jwtSecret string) *AuthService {
+	if len(jwtSecret) < 32 {
+		log.Fatal("JWT secret must be at least 32 characters")
+	}
+	return &AuthService{store: s, log: log, jwtSecret: []byte(jwtSecret)}
 }
 
 // LoginRequest carries credentials from the login endpoint.
@@ -82,16 +86,56 @@ func (s *AuthService) Login(req LoginRequest) (*LoginResult, *Error) {
 	}, nil
 }
 
+// Refresh authenticates a user by refresh token and returns new tokens.
+func (s *AuthService) Refresh(refreshToken string) (*LoginResult, *Error) {
+	userID, err := s.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return nil, unauthorized("Invalid or expired refresh token")
+	}
+
+	user, dbErr := s.store.Users().GetByID(userID)
+	if dbErr != nil {
+		return nil, unauthorized("User not found")
+	}
+
+	// Generate JWT access token
+	accessToken, err := s.generateJWT(user.ID, user.Email, 15*time.Minute)
+	if err != nil {
+		s.log.Error("failed to generate access token", zap.Error(err))
+		return nil, internalError("Failed to generate token")
+	}
+
+	// Generate new refresh token
+	newRefreshToken, err := s.generateRefreshToken(user.ID)
+	if err != nil {
+		s.log.Error("failed to generate refresh token", zap.Error(err))
+		return nil, internalError("Failed to generate token")
+	}
+
+	return &LoginResult{
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    900,
+	}, nil
+}
+
 // hashForLog returns a truncated hash of email for logging (prevents PII in logs)
 func hashForLog(email string) string {
 	h := sha256.Sum256([]byte(email))
 	return hex.EncodeToString(h[:8])
 }
 
-// ValidateToken validates a bearer token and returns the user ID.
-func (s *AuthService) ValidateToken(tokenString string) (string, error) {
+// Claims represents the JWT claims.
+type Claims struct {
+	UserID string `json:"uid"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// ValidateToken validates a bearer token and returns the claims.
+func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {
 	// Parse and validate JWT
-	claims := &jwt.MapClaims{}
+	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		// Ensure signing method is HS256
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -101,78 +145,94 @@ func (s *AuthService) ValidateToken(tokenString string) (string, error) {
 	})
 
 	if err != nil {
-		return "", unauthorized("Invalid token")
+		return nil, unauthorized("Invalid token")
 	}
 
 	if !token.Valid {
-		return "", unauthorized("Invalid token")
+		return nil, unauthorized("Invalid token")
 	}
 
-	// Extract user_id from claims
-	userID, ok := (*claims)["user_id"].(string)
-	if !ok || userID == "" {
-		return "", unauthorized("Invalid token claims")
+	_, err = uuid.Parse(claims.UserID)
+	if err != nil {
+		return nil, unauthorized("Invalid token user ID format")
 	}
 
-	return userID, nil
+	return claims, nil
 }
 
 // generateJWT creates a signed JWT access token
-func (s *AuthService) generateJWT(userID, email string, expiry time.Duration) (string, error) {
+func (s *AuthService) generateJWT(userID uuid.UUID, email string, expiry time.Duration) (string, error) {
 	now := time.Now()
-	claims := jwt.MapClaims{
-		"user_id": userID,
-		"email":   email,
-		"iat":     now.Unix(),
-		"exp":     now.Add(expiry).Unix(),
-		"iss":     "ai-software-factory",
-		"aud":     "ai-software-factory-api",
+	claims := Claims{
+		UserID: userID.String(),
+		Role:   "user", // Defaulting to user; update if role exists in DB
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Issuer:    "ai-software-factory",
+			Audience:  jwt.ClaimStrings{"ai-software-factory-api"},
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.getJWTSecret())
 }
 
-// generateRefreshToken creates a cryptographically secure refresh token
-func (s *AuthService) generateRefreshToken(userID string) (string, error) {
-	// Generate 32 bytes of random data
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+// generateRefreshToken creates a JWT refresh token
+func (s *AuthService) generateRefreshToken(userID uuid.UUID) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID: userID.String(),
+		Role:   "user", // Defaulting to user; update if role exists in DB
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Issuer:    "ai-software-factory",
+			Audience:  jwt.ClaimStrings{"ai-software-factory-api-refresh"},
+		},
 	}
-	token := hex.EncodeToString(b)
 
-	// Store refresh token hash for validation (in production, use Redis with TTL)
-	// For now, we'll use a simple approach with the token itself being the reference
-	// In production: store hash in store with userID and expiry
-	return "rt_" + token, nil
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(s.getJWTSecret())
 }
 
 // ValidateRefreshToken validates a refresh token and returns the user ID
-func (s *AuthService) ValidateRefreshToken(refreshToken string) (string, error) {
-	if !strings.HasPrefix(refreshToken, "rt_") {
-		return "", unauthorized("Invalid refresh token format")
+func (s *AuthService) ValidateRefreshToken(refreshToken string) (uuid.UUID, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return s.getJWTSecret(), nil
+	})
+
+	if err != nil || !token.Valid {
+		return uuid.Nil, unauthorized("Invalid refresh token")
 	}
-	// In production: look up stored hash and verify
-	// For now, we'll decode and verify the token was generated by us
-	tokenPart := strings.TrimPrefix(refreshToken, "rt_")
-	if len(tokenPart) != 64 { // 32 bytes = 64 hex chars
-		return "", unauthorized("Invalid refresh token")
+
+	// Verify audience for refresh token
+	validAud := false
+	for _, a := range claims.Audience {
+		if a == "ai-software-factory-api-refresh" {
+			validAud = true
+			break
+		}
 	}
-	// Verify it's valid hex
-	if _, err := hex.DecodeString(tokenPart); err != nil {
-		return "", unauthorized("Invalid refresh token")
+	if !validAud {
+		return uuid.Nil, unauthorized("Invalid token audience")
 	}
-	// In production, look up userID from stored refresh token
-	// For now, we'd need to store the mapping
-	return "", unauthorized("Refresh token validation requires storage backend")
+
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return uuid.Nil, unauthorized("Invalid token user ID format")
+	}
+
+	return userID, nil
 }
 
-// getJWTSecret returns the JWT signing secret (in production, load from config/env)
+// getJWTSecret returns the JWT signing secret
 func (s *AuthService) getJWTSecret() []byte {
-	// TODO: Load from config/env variable
-	// For now, use a fixed secret (MUST be changed in production)
-	return []byte("dev-secret-change-in-production-min-32-chars")
+	return s.jwtSecret
 }
 
 func hashToken(input string) string {

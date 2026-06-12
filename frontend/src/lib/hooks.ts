@@ -120,9 +120,45 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, ...payload }: UpdateTaskPayload & { id: string }) =>
       api.patch<Task>(`/v1/tasks/${id}`, payload),
-    onSuccess: (_, vars) => {
+    onMutate: async (variables) => {
+      await qc.cancelQueries({ queryKey: queryKeys.tasks.all });
+
+      const previousTasksList = qc.getQueriesData({ queryKey: queryKeys.tasks.all });
+      const previousTaskDetail = qc.getQueryData(queryKeys.tasks.detail(variables.id));
+
+      qc.setQueriesData({ queryKey: queryKeys.tasks.all }, (old: any) => {
+        console.log("optimistic list update:", !!old, old?.data?.length);
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: old.data.map((task: Task) =>
+            task.id === variables.id ? { ...task, ...variables } : task
+          ),
+        };
+      });
+
+      if (previousTaskDetail) {
+        qc.setQueryData(queryKeys.tasks.detail(variables.id), {
+          ...(previousTaskDetail as any),
+          ...variables,
+        });
+      }
+
+      return { previousTasksList, previousTaskDetail };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousTasksList) {
+        context.previousTasksList.forEach(([queryKey, data]) => {
+          qc.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousTaskDetail) {
+        qc.setQueryData(queryKeys.tasks.detail(variables.id), context.previousTaskDetail);
+      }
+    },
+    onSettled: (_, __, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(vars.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(variables.id) });
     },
   });
 }

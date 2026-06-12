@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // WebhookHandler handles webhook registration.
@@ -32,10 +32,10 @@ type webhookResponse struct {
 }
 
 // Register handles POST /webhooks.
-func (h *WebhookHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *WebhookHandler) Register(c *gin.Context) {
 	var req registerWebhookRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *WebhookHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Secret: req.Secret,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *WebhookHandler) Register(w http.ResponseWriter, r *http.Request) {
 		eventStrings[i] = string(e)
 	}
 
-	writeJSON(w, http.StatusCreated, webhookResponse{
+	writeJSON(c, http.StatusCreated, webhookResponse{
 		ID:        webhook.ID,
 		URL:       webhook.URL,
 		Events:    eventStrings,

@@ -75,7 +75,7 @@ POST /projects
 Request:
 {
   "name": "E-commerce Platform",
-  "description": "Build a modern e-commerce platform with React frontend and Node.js backend...",
+  "description": "Build a modern e-commerce platform with React frontend and Go backend...",
   "template": "web-app"
 }
 
@@ -263,7 +263,7 @@ Request:
 {
   "project_id": "proj_abc123",
   "task_id": "task_001",
-  "specification": "Implement JWT authentication with Express.js...",
+  "specification": "Implement JWT authentication with Gin...",
   "files": ["src/auth/login.ts", "src/auth/register.ts"]
 }
 
@@ -352,7 +352,7 @@ Response:
       "file": "src/auth/login.ts",
       "line": 42,
       "message": "Consider adding rate limiting to login endpoint",
-      "suggestion": "Add express-rate-limit middleware"
+      "suggestion": "Add gin-rate-limit middleware"
     }
   ],
   "metrics": {

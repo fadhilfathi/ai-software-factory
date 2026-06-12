@@ -2,28 +2,37 @@ package router
 
 import (
 	"net/http"
-	"strings"
 
-	"github.com/example/project/internal/handler"
-	"github.com/example/project/internal/middleware"
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/handler"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // publicRoutes returns true for paths that do not require authentication.
-func publicRoutes(r *http.Request) bool {
+func publicRoutes(c *gin.Context) bool {
 	public := map[string]bool{
-		"GET /v1/healthz":          true,
-		"POST /v1/auth/login":      true,
-		"POST /v1/users/register":  true,
+		"GET /v1/healthz":         true,
+		"POST /v1/auth/login":     true,
+		"POST /v1/auth/refresh":   true,
+		"POST /v1/users/register": true,
 	}
-	key := r.Method + " " + r.URL.Path
+	key := c.Request.Method + " " + c.FullPath()
 	return public[key]
 }
 
-// New builds and returns the configured HTTP handler with all routes registered
+// New builds and returns the configured Gin engine with all routes registered
 // under the /v1 prefix as specified in the API spec.
-func New(svc *service.Services) http.Handler {
-	mux := http.NewServeMux()
+func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
+	r := gin.New()
+
+	// --- Global Middleware ---
+	r.Use(middleware.Recovery())
+	r.Use(middleware.Logger())
+	r.Use(middleware.RequestID())
+	r.Use(middleware.CORS(corsConfig))
+	r.Use(middleware.RateLimit(rateLimitConfig))
+	r.Use(middleware.Auth(svc.Auth, publicRoutes))
 
 	// --- Handlers ---
 	auth := handler.NewAuthHandler(svc.Auth)
@@ -36,57 +45,52 @@ func New(svc *service.Services) http.Handler {
 	users := handler.NewUserHandler(svc.User)
 	webhooks := handler.NewWebhookHandler(svc.Webhook)
 
-	// --- Health ---
-	mux.HandleFunc("GET /v1/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	v1 := r.Group("/v1")
+	{
+		// --- Health ---
+		v1.GET("/healthz", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		})
 
-	// --- Auth ---
-	mux.HandleFunc("POST /v1/auth/login", auth.Login)
+		// --- Auth ---
+		v1.POST("/auth/login", auth.Login)
+		v1.POST("/auth/refresh", auth.Refresh)
 
-	// --- Projects ---
-	mux.HandleFunc("POST /v1/projects", projects.Create)
-	mux.HandleFunc("GET /v1/projects", projects.List)
-	mux.HandleFunc("GET /v1/projects/{id}", projects.Get)
+		// --- Projects ---
+		v1.POST("/projects", projects.Create)
+		v1.GET("/projects", projects.List)
+		v1.GET("/projects/:id", projects.Get)
 
-	// --- Agents ---
-	mux.HandleFunc("POST /v1/agents/spawn", agents.Spawn)
-	mux.HandleFunc("GET /v1/agents", agents.List)
-	mux.HandleFunc("POST /v1/agents/{id}/assign", agents.AssignTask)
+		// --- Agents ---
+		v1.POST("/agents/spawn", agents.Spawn)
+		v1.GET("/agents", agents.List)
+		v1.POST("/agents/:id/assign", agents.AssignTask)
 
-	// --- Tasks ---
-	mux.HandleFunc("POST /v1/projects/{projectId}/tasks", tasks.Create)
-	mux.HandleFunc("PATCH /v1/tasks/{id}", tasks.UpdateStatus)
+		// --- Tasks ---
+		v1.POST("/projects/:projectId/tasks", tasks.Create)
+		v1.PATCH("/tasks/:id", tasks.UpdateStatus)
 
-	// --- Code ---
-	mux.HandleFunc("POST /v1/code/generate", code.Generate)
-	mux.HandleFunc("GET /v1/code/{projectId}/files/{path...}", code.GetFile)
-	mux.HandleFunc("POST /v1/code/{projectId}/commits", code.CreateCommit)
+		// --- Code ---
+		v1.POST("/code/generate", code.Generate)
+		v1.GET("/code/:projectId/files/*path", code.GetFile)
+		v1.POST("/code/:projectId/commits", code.CreateCommit)
 
-	// --- Reviews ---
-	mux.HandleFunc("POST /v1/reviews", reviews.Create)
-	mux.HandleFunc("GET /v1/reviews/{id}", reviews.Get)
+		// --- Reviews ---
+		v1.POST("/reviews", reviews.Create)
+		v1.GET("/reviews/:id", reviews.Get)
 
-	// --- Deployments ---
-	mux.HandleFunc("POST /v1/deployments", deployments.Trigger)
-	mux.HandleFunc("GET /v1/deployments/{id}", deployments.GetStatus)
-	mux.HandleFunc("POST /v1/deployments/{id}/rollback", deployments.Rollback)
+		// --- Deployments ---
+		v1.POST("/deployments", deployments.Trigger)
+		v1.GET("/deployments/:id", deployments.GetStatus)
+		v1.POST("/deployments/:id/rollback", deployments.Rollback)
 
-	// --- Users ---
-	mux.HandleFunc("POST /v1/users/register", users.Register)
-	mux.HandleFunc("GET /v1/users/me", users.GetProfile)
+		// --- Users ---
+		v1.POST("/users/register", users.Register)
+		v1.GET("/users/me", users.GetProfile)
 
-	// --- Webhooks ---
-	mux.HandleFunc("POST /v1/webhooks", webhooks.Register)
+		// --- Webhooks ---
+		v1.POST("/webhooks", webhooks.Register)
+	}
 
-	// --- Middleware chain (outer wraps inner) ---
-	var h http.Handler = mux
-	h = middleware.CORS(h)
-	h = middleware.RequestID(h)
-	h = middleware.Recovery(h)
-	h = middleware.Logger(h)
-	h = middleware.Auth(svc.Auth, publicRoutes)(h)
-
-	return h
+	return r
 }

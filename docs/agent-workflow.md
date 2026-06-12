@@ -65,6 +65,7 @@ The AI Software Factory uses a multi-agent system where specialized AI agents co
 - Manage infrastructure as code
 - Monitor deployments
 - Handle rollbacks
+- Always commit and push after a finished sprint
 
 ## Workflow States
 

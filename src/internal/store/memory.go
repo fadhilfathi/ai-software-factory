@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/example/project/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 )
 
 // memoryStore implements Store with in-memory maps protected by a mutex.
@@ -68,10 +68,10 @@ func (s *memoryUserStore) Create(u *model.User) error {
 	return nil
 }
 
-func (s *memoryUserStore) GetByID(id string) (*model.User, error) {
+func (s *memoryUserStore) GetByID(id uuid.UUID) (*model.User, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	u, ok := s.m.users[id]
+	u, ok := s.m.users[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
@@ -117,6 +117,27 @@ func (s *memoryUserStore) Update(u *model.User) error {
 	return nil
 }
 
+// CheckProjectAccess returns true if the user has access to the project
+func (s *memoryUserStore) CheckProjectAccess(userID, projectID string) bool {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	user, ok := s.m.users[userID]
+	if !ok {
+		return false
+	}
+	// Admin users have access to all projects
+	if user.Role == model.RoleAdmin {
+		return true
+	}
+	// Check if user is a member of the project
+	for _, pid := range user.Projects {
+		if pid == projectID {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Project Store ---
 
 type memoryProjectStore struct{ m *memoryStore }
@@ -131,10 +152,10 @@ func (s *memoryProjectStore) Create(p *model.Project) error {
 	return nil
 }
 
-func (s *memoryProjectStore) GetByID(id string) (*model.Project, error) {
+func (s *memoryProjectStore) GetByID(id uuid.UUID) (*model.Project, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	p, ok := s.m.projects[id]
+	p, ok := s.m.projects[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
@@ -212,10 +233,10 @@ func (s *memoryAgentStore) Create(a *model.Agent) error {
 	return nil
 }
 
-func (s *memoryAgentStore) GetByID(id string) (*model.Agent, error) {
+func (s *memoryAgentStore) GetByID(id uuid.UUID) (*model.Agent, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	a, ok := s.m.agents[id]
+	a, ok := s.m.agents[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
@@ -292,10 +313,10 @@ func (s *memoryTaskStore) Create(t *model.Task) error {
 	return nil
 }
 
-func (s *memoryTaskStore) GetByID(id string) (*model.Task, error) {
+func (s *memoryTaskStore) GetByID(id uuid.UUID) (*model.Task, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	t, ok := s.m.tasks[id]
+	t, ok := s.m.tasks[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
@@ -413,7 +434,7 @@ func (s *memoryCodeStore) UpdateCodeGen(r *model.CodeGenRequest) error {
 func (s *memoryCodeStore) SaveFile(f *model.ProjectFile) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	key := f.ModifiedBy + ":" + f.Path // store under generated key, use project:path
+	key := f.ProjectID + ":" + f.Path // store under project:path key
 	s.m.files[key] = f
 	return nil
 }
@@ -421,13 +442,12 @@ func (s *memoryCodeStore) SaveFile(f *model.ProjectFile) error {
 func (s *memoryCodeStore) GetFile(projectID, path string) (*model.ProjectFile, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	// linear scan — fine for in-memory
-	for _, f := range s.m.files {
-		if strings.Contains(f.ModifiedBy, projectID) && f.Path == path {
-			return f, nil
-		}
+	key := projectID + ":" + path
+	f, ok := s.m.files[key]
+	if !ok {
+		return nil, ErrNotFound
 	}
-	return nil, ErrNotFound
+	return f, nil
 }
 
 func (s *memoryCodeStore) ListFiles(projectID string) ([]*model.ProjectFile, error) {
@@ -435,7 +455,7 @@ func (s *memoryCodeStore) ListFiles(projectID string) ([]*model.ProjectFile, err
 	defer s.m.mu.RUnlock()
 	var result []*model.ProjectFile
 	for _, f := range s.m.files {
-		if strings.Contains(f.ModifiedBy, projectID) {
+		if f.ProjectID == projectID {
 			result = append(result, f)
 		}
 	}
@@ -493,10 +513,10 @@ func (s *memoryReviewStore) Create(r *model.Review) error {
 	return nil
 }
 
-func (s *memoryReviewStore) GetByID(id string) (*model.Review, error) {
+func (s *memoryReviewStore) GetByID(id uuid.UUID) (*model.Review, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	r, ok := s.m.reviews[id]
+	r, ok := s.m.reviews[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}

@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // DeploymentHandler handles deployment lifecycle endpoints.
@@ -44,10 +44,10 @@ type deploymentStep struct {
 }
 
 // Trigger handles POST /deployments.
-func (h *DeploymentHandler) Trigger(w http.ResponseWriter, r *http.Request) {
+func (h *DeploymentHandler) Trigger(c *gin.Context) {
 	var req triggerDeploymentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -57,45 +57,45 @@ func (h *DeploymentHandler) Trigger(w http.ResponseWriter, r *http.Request) {
 		Branch:      req.Branch,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, toDeploymentResponse(deployment))
+	writeJSON(c, http.StatusAccepted, toDeploymentResponse(deployment))
 }
 
 // GetStatus handles GET /deployments/{id}.
-func (h *DeploymentHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (h *DeploymentHandler) GetStatus(c *gin.Context) {
+	id := c.Param("id")
 	if id == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Deployment ID is required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Deployment ID is required")
 		return
 	}
 
 	deployment, svcErr := h.svc.GetDeployment(id)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toDeploymentResponse(deployment))
+	writeJSON(c, http.StatusOK, toDeploymentResponse(deployment))
 }
 
 // Rollback handles POST /deployments/{id}/rollback.
-func (h *DeploymentHandler) Rollback(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (h *DeploymentHandler) Rollback(c *gin.Context) {
+	id := c.Param("id")
 	if id == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Deployment ID is required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Deployment ID is required")
 		return
 	}
 
 	deployment, svcErr := h.svc.RollbackDeployment(id)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toDeploymentResponse(deployment))
+	writeJSON(c, http.StatusOK, toDeploymentResponse(deployment))
 }
 
 func toDeploymentResponse(d *model.Deployment) deploymentResponse {

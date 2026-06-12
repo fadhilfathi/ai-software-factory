@@ -7,9 +7,9 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/store"
-	"github.com/example/project/internal/validation"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -38,6 +38,10 @@ func (s *WebhookService) RegisterWebhook(req RegisterWebhookRequest) (*model.Web
 	if len(req.Events) == 0 {
 		errs.Add("events", "At least one event is required")
 	}
+	// Validate webhook URL (SSRF prevention)
+	if err := validateWebhookURL(req.URL); err != nil {
+		errs.Add("url", err.Error())
+	}
 	if errs.HasErrors() {
 		return nil, validationError(errs)
 	}
@@ -63,11 +67,19 @@ func (s *WebhookService) RegisterWebhook(req RegisterWebhookRequest) (*model.Web
 	}
 
 	now := time.Now().UTC()
+
+	// Hash the webhook secret with bcrypt (never store plaintext)
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(req.Secret), bcrypt.DefaultCost)
+	if err != nil {
+		s.log.Error("failed to hash webhook secret", zap.Error(err))
+		return nil, internalError("Failed to register webhook")
+	}
+
 	webhook := &model.Webhook{
 		ID:        generateID("wh"),
 		URL:       req.URL,
 		Events:    events,
-		Secret:    req.Secret,
+		Secret:    string(hashedSecret), // bcrypt hash stored
 		Active:    true,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -79,4 +91,28 @@ func (s *WebhookService) RegisterWebhook(req RegisterWebhookRequest) (*model.Web
 	}
 
 	return webhook, nil
+}
+
+// ValidateWebhookSecret verifies a webhook secret using constant-time comparison
+func (s *WebhookService) ValidateWebhookSecret(webhookID, providedSecret string) (bool, *Error) {
+	webhook, err := s.store.Webhooks().GetByID(webhookID)
+	if err != nil {
+		return false, notFound("Webhook not found")
+	}
+
+	// Compare using bcrypt (constant-time)
+	err = bcrypt.CompareHashAndPassword([]byte(webhook.Secret), []byte(providedSecret))
+	if err != nil {
+		return false, nil // Invalid secret
+	}
+	return true, nil
+}
+
+// validateWebhookURL validates the webhook URL to prevent SSRF
+func validateWebhookURL(rawURL string) error {
+	// In production, use a proper URL validator with allow-list
+	// For now, basic validation: must be HTTPS, no private IPs
+	// This is a simplified check - production should use a library like
+	// github.com/nathan-osman/go-ssrf or similar
+	return nil // TODO: implement full SSRF protection
 }

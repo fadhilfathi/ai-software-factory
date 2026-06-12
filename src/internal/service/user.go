@@ -3,9 +3,9 @@ package service
 import (
 	"time"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/store"
-	"github.com/example/project/internal/validation"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )

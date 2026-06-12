@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // CodeHandler handles code generation and file management endpoints.
@@ -32,25 +32,25 @@ type generateCodeResponse struct {
 }
 
 // Generate handles POST /code/generate.
-func (h *CodeHandler) Generate(w http.ResponseWriter, r *http.Request) {
+func (h *CodeHandler) Generate(c *gin.Context) {
 	var req generateCodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
-	result, svcErr := h.svc.GenerateCode(service.GenerateCodeRequest{
+	result, svcErr := h.svc.GenerateCode(c.Request.Context(), service.GenerateCodeRequest{
 		ProjectID:     req.ProjectID,
 		TaskID:        req.TaskID,
 		Specification: req.Specification,
 		Files:         req.Files,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, generateCodeResponse{
+	writeJSON(c, http.StatusAccepted, generateCodeResponse{
 		ID:            result.ID,
 		Status:        string(result.Status),
 		EstimatedTime: result.EstimatedTime,
@@ -67,21 +67,21 @@ type fileResponse struct {
 }
 
 // GetFile handles GET /code/{projectId}/files/{path...}.
-func (h *CodeHandler) GetFile(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectId")
-	filePath := r.PathValue("path")
+func (h *CodeHandler) GetFile(c *gin.Context) {
+	projectID := c.Param("projectId")
+	filePath := c.Param("path")
 	if projectID == "" || filePath == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "projectId and file path are required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "projectId and file path are required")
 		return
 	}
 
-	file, svcErr := h.svc.GetFile(projectID, filePath)
+	file, svcErr := h.svc.GetFile(c.Request.Context(), projectID, filePath)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, fileResponse{
+	writeJSON(c, http.StatusOK, fileResponse{
 		Path:         file.Path,
 		Content:      file.Content,
 		Language:     file.Language,
@@ -110,16 +110,16 @@ type commitResponse struct {
 }
 
 // CreateCommit handles POST /code/{projectId}/commits.
-func (h *CodeHandler) CreateCommit(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectId")
+func (h *CodeHandler) CreateCommit(c *gin.Context) {
+	projectID := c.Param("projectId")
 	if projectID == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Project ID is required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Project ID is required")
 		return
 	}
 
 	var req createCommitRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -128,18 +128,18 @@ func (h *CodeHandler) CreateCommit(w http.ResponseWriter, r *http.Request) {
 		modelFiles[i] = model.CommitFile{Path: f.Path, Content: f.Content}
 	}
 
-	commit, svcErr := h.svc.CreateCommit(service.CreateCommitRequest{
+	commit, svcErr := h.svc.CreateCommit(c.Request.Context(), service.CreateCommitRequest{
 		ProjectID: projectID,
 		Branch:    req.Branch,
 		Message:   req.Message,
 		Files:     modelFiles,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, commitResponse{
+	writeJSON(c, http.StatusCreated, commitResponse{
 		SHA:       commit.SHA,
 		Message:   commit.Message,
 		Author:    commit.Author,

@@ -94,7 +94,7 @@ Link to specific migration section or steps.
 #### DevOps
 - **Docker Compose** — Single-command `docker compose up -d --build` to run the
   full stack. Health-check dependency ordering ensures correct startup sequence.
-- **Dockerfiles** — Multi-stage Go build (distroless runtime) and Node.js
+- **Dockerfiles** — Multi-stage Go build (distroless runtime) and Node.js frontend
   production image with layer caching optimisation.
 - **CI/CD** — GitHub Actions `ci.yml` (lint → test → build → e2e smoke) on
   every push/PR; `deploy.yml` (build & push to GHCR → SSH deploy → health

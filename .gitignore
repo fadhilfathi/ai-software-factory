@@ -1,8 +1,59 @@
+# --- Node / Frontend ---
 node_modules/
-build/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Go Backend ---
+src/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+src/tmp/
+
+# --- Environment ---
 .env
 .env.local
-__pycache__/
-*.pyc
+.env.*.local
+
+# --- IDE & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# --- OS Artifacts ---
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
+*.lnk
+
+# --- Build Output ---
+build/
+dist/
+bin/
+artifacts/*.exe
+artifacts/*.dll
+artifacts/*.so
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# --- Docker ---
+.docker/
+*.tar
+
+# --- Logs ---
+*.log
+logs/

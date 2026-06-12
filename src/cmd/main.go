@@ -3,15 +3,14 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/example/project/internal/config"
-	"github.com/example/project/internal/logger"
-	"github.com/example/project/internal/router"
-	"github.com/example/project/internal/service"
-	"github.com/example/project/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/logger"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/router"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 )
 
 func main() {
@@ -31,19 +30,14 @@ func main() {
 
 	// Initialize in-memory store and service layer.
 	st := store.NewMemoryStore()
-	svc := service.New(st, logger)
+	svc := service.New(st, logger, cfg.Auth.JWTSecret)
 
-	handler := router.New(svc)
+	r := router.New(svc, cfg.CORS, cfg.RateLimit)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	log.Printf("API server starting on %s", addr)
 
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: handler,
-	}
-
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := r.Run(addr); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

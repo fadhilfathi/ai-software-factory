@@ -59,9 +59,9 @@ The AI Software Factory is a multi-agent platform that orchestrates specialized 
 - **Real-time:** Server-Sent Events (SSE) for agent status
 
 ### Backend
-- **Runtime:** Node.js 20+ (LTS)
-- **Framework:** Fastify (high performance)
-- **Language:** TypeScript
+- **Runtime:** Go 1.22+
+- **Framework:** Gin (high performance)
+- **Language:** Go
 - **API Style:** REST + WebSocket for real-time
 
 ### AI/ML Layer
@@ -273,7 +273,7 @@ User → Login (OAuth/Email) → Auth Service → JWT Token
 |----------|--------|-----------|
 | Database | PostgreSQL | ACID compliance, JSON support, proven reliability |
 | Cache | Redis | Performance, pub/sub for events, session storage |
-| Agent Runtime | Node.js | Consistent with API, async I/O for agent loops |
+| Agent Runtime | Go | Consistent with API, goroutines/channels for high-concurrency agent loops |
 | Communication | REST + SSE | REST for commands, SSE for real-time updates |
 | Storage | S3-compatible | Scalable, cost-effective, widely supported |
 | Container | Docker | Standard, portable, Kubernetes-native |

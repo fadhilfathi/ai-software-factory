@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // AgentType defines the role of an agent within a project.
 type AgentType string
@@ -23,20 +28,14 @@ const (
 	AgentFailed    AgentStatus = "failed"
 )
 
-// AgentConfig holds runtime configuration for an agent.
-type AgentConfig struct {
-	Model       string  `json:"model,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
-}
-
 // Agent represents an AI agent operating within a project.
 type Agent struct {
-	ID           string      `json:"id"`
+	ID           uuid.UUID   `json:"id"`
 	Type         AgentType   `json:"type"`
 	Status       AgentStatus `json:"status"`
-	ProjectID    string      `json:"project_id,omitempty"`
-	Config       *AgentConfig `json:"config,omitempty"`
-	CurrentTask  string      `json:"current_task,omitempty"`
+	ProjectID    uuid.UUID   `json:"project_id,omitempty"`
+	Config       json.RawMessage `json:"config,omitempty"`
+	CurrentTaskID  uuid.UUID   `json:"current_task_id,omitempty"`
 	TasksDone    int         `json:"tasks_completed,omitempty"`
 	Uptime       int         `json:"uptime,omitempty"` // seconds
 	CreatedAt    time.Time   `json:"created_at"`
@@ -45,9 +44,9 @@ type Agent struct {
 
 // Assignment represents a task assigned to an agent.
 type Assignment struct {
-	ID                  string    `json:"id"`
-	AgentID             string    `json:"agent_id"`
-	TaskID              string    `json:"task_id"`
+	ID                  uuid.UUID `json:"id"`
+	AgentID             uuid.UUID `json:"agent_id"`
+	TaskID              uuid.UUID `json:"task_id"`
 	Status              string    `json:"status"`
 	EstimatedCompletion time.Time `json:"estimated_completion,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`

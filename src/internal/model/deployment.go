@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Environment represents the deployment target.
 type Environment string
@@ -33,8 +37,8 @@ type DeploymentStep struct {
 
 // Deployment represents a deployment of a project to an environment.
 type Deployment struct {
-	ID            string           `json:"id"`
-	ProjectID     string           `json:"project_id"`
+	ID            uuid.UUID        `json:"id"`
+	ProjectID     uuid.UUID        `json:"project_id"`
 	Environment   Environment      `json:"environment"`
 	Branch        string           `json:"branch"`
 	Status        DeploymentStatus `json:"status"`

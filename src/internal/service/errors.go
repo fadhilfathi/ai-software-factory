@@ -3,7 +3,7 @@ package service
 import (
 	"net/http"
 
-	"github.com/example/project/internal/validation"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 )
 
 // Error represents an error from the service layer with an HTTP status code

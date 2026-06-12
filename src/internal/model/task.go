@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // TaskPriority represents the urgency level of a task.
 type TaskPriority string
@@ -25,16 +30,16 @@ const (
 
 // Task represents a unit of work within a project.
 type Task struct {
-	ID                 string       `json:"id"`
-	ProjectID          string       `json:"project_id"`
+	ID                 uuid.UUID    `json:"id"`
+	ProjectID          uuid.UUID    `json:"project_id"`
 	Title              string       `json:"title"`
 	Description        string       `json:"description,omitempty"`
 	Type               string       `json:"type,omitempty"`
-	AcceptanceCriteria []string     `json:"acceptance_criteria,omitempty"`
+	AcceptanceCriteria json.RawMessage `json:"acceptance_criteria,omitempty"`
 	Priority           TaskPriority `json:"priority"`
 	Status             TaskStatus   `json:"status"`
 	EstimatedHours     int          `json:"estimated_hours,omitempty"`
-	AssigneeAgentID    string       `json:"assignee_agent_id,omitempty"`
+	AssigneeAgentID    uuid.UUID    `json:"assignee_agent_id,omitempty"`
 	CreatedAt          time.Time    `json:"created_at"`
 	UpdatedAt          time.Time    `json:"updated_at"`
 }

@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // UserHandler handles user registration and profile endpoints.
@@ -34,10 +35,10 @@ type userResponse struct {
 }
 
 // Register handles POST /users/register.
-func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) Register(c *gin.Context) {
 	var req registerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -47,11 +48,11 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Name:     req.Name,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, userResponse{
+	writeJSON(c, http.StatusCreated, userResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		Name:      user.Name,
@@ -63,20 +64,20 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetProfile handles GET /users/me.
-func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id")
-	uid, _ := userID.(string)
-	if uid == "" {
+func (h *UserHandler) GetProfile(c *gin.Context) {
+	uid, exists := c.Get(middleware.UserIDKey)
+	if !exists {
 		uid = "user_from_jwt"
 	}
+	userID, _ := uid.(string)
 
-	user, svcErr := h.svc.GetProfile(uid)
+	user, svcErr := h.svc.GetProfile(userID)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, userResponse{
+	writeJSON(c, http.StatusOK, userResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		Name:      user.Name,

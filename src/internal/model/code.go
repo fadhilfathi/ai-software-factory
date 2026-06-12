@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // CodeGenStatus represents the lifecycle state of a code generation request.
 type CodeGenStatus string
@@ -14,9 +18,9 @@ const (
 
 // CodeGenRequest represents a request to generate or modify code.
 type CodeGenRequest struct {
-	ID            string        `json:"id"`
-	ProjectID     string        `json:"project_id"`
-	TaskID        string        `json:"task_id"`
+	ID            uuid.UUID     `json:"id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	TaskID        uuid.UUID     `json:"task_id"`
 	Specification string        `json:"specification"`
 	Files         []string      `json:"files"`
 	Status        CodeGenStatus `json:"status"`
@@ -27,6 +31,7 @@ type CodeGenRequest struct {
 
 // ProjectFile represents a file within a project's codebase.
 type ProjectFile struct {
+	ProjectID    uuid.UUID `json:"project_id"`
 	Path         string    `json:"path"`
 	Content      string    `json:"content"`
 	Language     string    `json:"language"`
@@ -38,7 +43,7 @@ type ProjectFile struct {
 // Commit represents a commit to the project's codebase.
 type Commit struct {
 	SHA       string    `json:"sha"`
-	ProjectID string    `json:"project_id"`
+	ProjectID uuid.UUID `json:"project_id"`
 	Branch    string    `json:"branch"`
 	Message   string    `json:"message"`
 	Author    string    `json:"author"`

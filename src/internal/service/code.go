@@ -1,12 +1,13 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"time"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/store"
-	"github.com/example/project/internal/validation"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,21 @@ func NewCodeService(s store.Store, log *zap.Logger) *CodeService {
 	return &CodeService{store: s, log: log}
 }
 
+// getUserID extracts the user ID from context
+func (s *CodeService) getUserID(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(UserIDKey).(string)
+	return userID, ok
+}
+
+// checkProjectAccess verifies the user has access to the project
+func (s *CodeService) checkProjectAccess(ctx context.Context, projectID string) bool {
+	userID, ok := s.getUserID(ctx)
+	if !ok {
+		return false
+	}
+	return s.store.Users().CheckProjectAccess(userID, projectID)
+}
+
 // GenerateCodeRequest carries code generation input.
 type GenerateCodeRequest struct {
 	ProjectID     string
@@ -29,7 +45,11 @@ type GenerateCodeRequest struct {
 }
 
 // GenerateCode creates a code generation request.
-func (s *CodeService) GenerateCode(req GenerateCodeRequest) (*model.CodeGenRequest, *Error) {
+func (s *CodeService) GenerateCode(ctx context.Context, req GenerateCodeRequest) (*model.CodeGenRequest, *Error) {
+	if !s.checkProjectAccess(ctx, req.ProjectID) {
+		return nil, notFound("Project not found")
+	}
+
 	var errs validation.Errors
 	validation.NotEmpty(req.ProjectID, "project_id", "Project ID", &errs)
 	validation.NotEmpty(req.Specification, "specification", "Specification", &errs)
@@ -64,7 +84,10 @@ func (s *CodeService) GenerateCode(req GenerateCodeRequest) (*model.CodeGenReque
 }
 
 // GetFile returns a specific file from a project.
-func (s *CodeService) GetFile(projectID, path string) (*model.ProjectFile, *Error) {
+func (s *CodeService) GetFile(ctx context.Context, projectID, path string) (*model.ProjectFile, *Error) {
+	if !s.checkProjectAccess(ctx, projectID) {
+		return nil, notFound("File not found")
+	}
 	file, err := s.store.Code().GetFile(projectID, path)
 	if err != nil {
 		return nil, notFound("File not found")
@@ -81,7 +104,11 @@ type CreateCommitRequest struct {
 }
 
 // CreateCommit creates a new commit for a project.
-func (s *CodeService) CreateCommit(req CreateCommitRequest) (*model.Commit, *Error) {
+func (s *CodeService) CreateCommit(ctx context.Context, req CreateCommitRequest) (*model.Commit, *Error) {
+	if !s.checkProjectAccess(ctx, req.ProjectID) {
+		return nil, notFound("Project not found")
+	}
+
 	var errs validation.Errors
 	validation.NotEmpty(req.ProjectID, "project_id", "Project ID", &errs)
 	validation.NotEmpty(req.Message, "message", "Commit message", &errs)
@@ -108,6 +135,7 @@ func (s *CodeService) CreateCommit(req CreateCommitRequest) (*model.Commit, *Err
 	// Save files
 	for _, f := range req.Files {
 		file := &model.ProjectFile{
+			ProjectID:    req.ProjectID,
 			Path:         f.Path,
 			Content:      f.Content,
 			Language:     detectLanguage(f.Path),

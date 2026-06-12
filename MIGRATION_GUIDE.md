@@ -355,7 +355,7 @@ docker compose logs api | grep -i "llm\|provider\|model"
 
 ## Appendix: Version Compatibility Matrix
 
-| App Version | API Version | DB Schema | Docker Compose | Min Go | Min Node.js | Min PostgreSQL |
+| App Version | API Version | DB Schema | Docker Compose | Min Go | Min Node.js (FE) | Min PostgreSQL |
 |------------|-------------|-----------|----------------|--------|-------------|----------------|
 | v1.0.0     | v1          | v1        | 2.24+          | 1.22+  | 20 (LTS)    | 16             |
 

@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
-	"github.com/example/project/internal/model"
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // AgentHandler handles agent lifecycle endpoints.
@@ -38,10 +38,10 @@ type agentResponse struct {
 }
 
 // Spawn handles POST /agents/spawn.
-func (h *AgentHandler) Spawn(w http.ResponseWriter, r *http.Request) {
+func (h *AgentHandler) Spawn(c *gin.Context) {
 	var req spawnAgentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -59,11 +59,11 @@ func (h *AgentHandler) Spawn(w http.ResponseWriter, r *http.Request) {
 		Config:    cfg,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, agentResponse{
+	writeJSON(c, http.StatusCreated, agentResponse{
 		ID:        agent.ID,
 		Type:      string(agent.Type),
 		Status:    string(agent.Status),
@@ -72,14 +72,14 @@ func (h *AgentHandler) Spawn(w http.ResponseWriter, r *http.Request) {
 }
 
 // List handles GET /agents.
-func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
-	projectID := r.URL.Query().Get("project_id")
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+func (h *AgentHandler) List(c *gin.Context) {
+	projectID := c.Query("project_id")
+	page, _ := strconv.Atoi(c.Query("page"))
+	limit, _ := strconv.Atoi(c.Query("limit"))
 
 	agents, pagination, svcErr := h.svc.ListAgents(projectID, page, limit)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, PaginatedResponse{
+	writeJSON(c, http.StatusOK, PaginatedResponse{
 		Data:       items,
 		Pagination: Pagination{Page: pagination.Page, Limit: pagination.Limit, Total: pagination.Total, Pages: pagination.Pages},
 	})
@@ -116,16 +116,16 @@ type assignTaskResponse struct {
 }
 
 // AssignTask handles POST /agents/{id}/assign.
-func (h *AgentHandler) AssignTask(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (h *AgentHandler) AssignTask(c *gin.Context) {
+	id := c.Param("id")
 	if id == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Agent ID is required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Agent ID is required")
 		return
 	}
 
 	var req assignTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -135,11 +135,11 @@ func (h *AgentHandler) AssignTask(w http.ResponseWriter, r *http.Request) {
 		Context:  req.Context,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, assignTaskResponse{
+	writeJSON(c, http.StatusOK, assignTaskResponse{
 		ID:     agent.ID,
 		TaskID: req.TaskID,
 		Status: string(agent.Status),

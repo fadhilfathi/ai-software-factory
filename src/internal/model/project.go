@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // ProjectStatus represents the lifecycle state of a project.
 type ProjectStatus string
@@ -14,7 +18,7 @@ const (
 
 // Project represents a software project within the factory.
 type Project struct {
-	ID            string        `json:"id"`
+	ID            uuid.UUID     `json:"id"`
 	Name          string        `json:"name"`
 	Description   string        `json:"description,omitempty"`
 	Status        ProjectStatus `json:"status"`

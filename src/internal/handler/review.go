@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // ReviewHandler handles code review endpoints.
@@ -42,16 +42,16 @@ type reviewIssue struct {
 }
 
 type reviewMetrics struct {
-	Complexity    string  `json:"complexity"`
-	TestCoverage  float64 `json:"test_coverage"`
-	Duplications  int     `json:"duplications"`
+	Complexity   string  `json:"complexity"`
+	TestCoverage float64 `json:"test_coverage"`
+	Duplications int     `json:"duplications"`
 }
 
 // Create handles POST /reviews.
-func (h *ReviewHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *ReviewHandler) Create(c *gin.Context) {
 	var req createReviewRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
 
@@ -61,11 +61,11 @@ func (h *ReviewHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ReviewerType: req.ReviewerType,
 	})
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, reviewResponse{
+	writeJSON(c, http.StatusCreated, reviewResponse{
 		ID:       review.ID,
 		Status:   string(review.Status),
 		Reviewer: review.Reviewer,
@@ -73,16 +73,16 @@ func (h *ReviewHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // Get handles GET /reviews/{id}.
-func (h *ReviewHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (h *ReviewHandler) Get(c *gin.Context) {
+	id := c.Param("id")
 	if id == "" {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Review ID is required")
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Review ID is required")
 		return
 	}
 
 	review, svcErr := h.svc.GetReview(id)
 	if svcErr != nil {
-		writeServiceError(w, svcErr)
+		writeServiceError(c, svcErr)
 		return
 	}
 
@@ -100,13 +100,13 @@ func (h *ReviewHandler) Get(w http.ResponseWriter, r *http.Request) {
 	var metrics *reviewMetrics
 	if review.Metrics != nil {
 		metrics = &reviewMetrics{
-			Complexity:    review.Metrics.Complexity,
-			TestCoverage:  review.Metrics.TestCoverage,
+			Complexity:   review.Metrics.Complexity,
+			TestCoverage: review.Metrics.TestCoverage,
 			Duplications: review.Metrics.Duplications,
 		}
 	}
 
-	writeJSON(w, http.StatusOK, reviewResponse{
+	writeJSON(c, http.StatusOK, reviewResponse{
 		ID:      review.ID,
 		Status:  string(review.Status),
 		Result:  string(review.Result),

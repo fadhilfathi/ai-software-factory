@@ -289,7 +289,7 @@ This document defines the functional requirements for the AI Software Factory pl
 ### FR-101: Multi-Language Code Generation
 **Description:** Developer Agent generates production-ready code in multiple languages and frameworks.
 
-**Supported (MVP):** TypeScript/JavaScript (Node.js, React, Next.js), Python (FastAPI, Django), Go, Rust
+**Supported (MVP):** TypeScript/JavaScript (Next.js, React), Python (FastAPI, Django), Go (Gin), Rust
 **Planned:** Java, C#, Ruby, PHP, Swift, Kotlin
 
 **Acceptance Criteria:**

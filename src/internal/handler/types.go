@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
-	"github.com/example/project/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // APIResponse wraps a successful payload.
@@ -45,25 +45,23 @@ type PaginatedResponse struct {
 	Pagination Pagination  `json:"pagination"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+func writeJSON(c *gin.Context, status int, v interface{}) {
+	c.JSON(status, v)
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, ErrorResponse{
+func writeError(c *gin.Context, status int, code, message string) {
+	c.JSON(status, ErrorResponse{
 		Error: ErrorBody{Code: code, Message: message},
 	})
 }
 
-func writeErrorWithDetails(w http.ResponseWriter, status int, code, message string, details []ErrorDetail) {
-	writeJSON(w, status, ErrorResponse{
+func writeErrorWithDetails(c *gin.Context, status int, code, message string, details []ErrorDetail) {
+	c.JSON(status, ErrorResponse{
 		Error: ErrorBody{Code: code, Message: message, Details: details},
 	})
 }
 
-func writeServiceError(w http.ResponseWriter, err *service.Error) {
+func writeServiceError(c *gin.Context, err *service.Error) {
 	if err == nil {
 		return
 	}
@@ -72,8 +70,8 @@ func writeServiceError(w http.ResponseWriter, err *service.Error) {
 		details[i] = ErrorDetail{Field: d.Field, Message: d.Message}
 	}
 	if len(details) > 0 {
-		writeErrorWithDetails(w, err.Status, err.Code, err.Message, details)
+		writeErrorWithDetails(c, err.Status, err.Code, err.Message, details)
 	} else {
-		writeError(w, err.Status, err.Code, err.Message)
+		writeError(c, err.Status, err.Code, err.Message)
 	}
 }
