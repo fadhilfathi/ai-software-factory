@@ -97,7 +97,7 @@ type ListCapabilitiesRequest struct {
 
 // ListCapabilitiesResult is the response shape for the catalog read.
 type ListCapabilitiesResult struct {
-	Data       []model.Capability
+	Data       []model.CapabilityRow
 	NextCursor string
 	HasMore    bool
 }

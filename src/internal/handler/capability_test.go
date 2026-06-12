@@ -142,7 +142,7 @@ func TestCapabilityHandler_ListCatalogCapabilities_Success(t *testing.T) {
 	m.On("ListCapabilities", mock.Anything, mock.MatchedBy(func(req service.ListCapabilitiesRequest) bool {
 		return req.Category == "coding" && req.Limit == 0
 	})).Return(&service.ListCapabilitiesResult{
-		Data: []model.Capability{
+		Data: []model.CapabilityRow{
 			{Name: "coding", DisplayName: "Coding", Category: "coding", Version: 1},
 		},
 		HasMore: false,
@@ -169,7 +169,7 @@ func TestCapabilityHandler_ListCatalogCapabilities_WithLimit(t *testing.T) {
 	m.On("ListCapabilities", mock.Anything, mock.MatchedBy(func(req service.ListCapabilitiesRequest) bool {
 		return req.Category == "" && req.Limit == 10
 	})).Return(&service.ListCapabilitiesResult{
-		Data:    []model.Capability{},
+		Data:    []model.CapabilityRow{},
 		HasMore: false,
 	}, (*service.Error)(nil))
 

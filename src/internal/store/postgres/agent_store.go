@@ -354,10 +354,10 @@ type postgresCapabilityStore struct {
 
 func (s *postgresCapabilityStore) pool() *pgxpool.Pool { return s.s.pool }
 
-func (s *postgresCapabilityStore) GetByName(ctx context.Context, name string) (*model.Capability, error) {
+func (s *postgresCapabilityStore) GetByName(ctx context.Context, name string) (*model.CapabilityRow, error) {
 	query := `SELECT id, name, display_name, category, COALESCE(description, ''), version
 		FROM capabilities WHERE name = $1`
-	c := &model.Capability{}
+	c := &model.CapabilityRow{}
 	err := s.pool().QueryRow(ctx, query, name).Scan(
 		&c.ID, &c.Name, &c.DisplayName, &c.Category, &c.Description, &c.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -414,9 +414,9 @@ func (s *postgresCapabilityStore) List(ctx context.Context, f model.CapabilityFi
 	}
 	defer rows.Close()
 
-	out := make([]model.Capability, 0, limit)
+	out := make([]model.CapabilityRow, 0, limit)
 	for rows.Next() {
-		var c model.Capability
+		var c model.CapabilityRow
 		if err := rows.Scan(&c.ID, &c.Name, &c.DisplayName, &c.Category, &c.Description, &c.Version); err != nil {
 			return nil, fmt.Errorf("scan capability: %w", err)
 		}

@@ -39,7 +39,7 @@ type memoryStore struct {
 	webhooks    map[string]*model.Webhook
 	auditLogs   map[string]*model.AuditLog
 	tokens      map[string]uuid.UUID
-	capabilities map[string]*model.Capability // key: capability.name
+	capabilities map[string]*model.CapabilityRow // key: capability.name
 	// assignmentEvents is the TASK-404 append-only history. Keyed by
 	// event ID for O(1) Append; a secondary index by task_id powers
 	// the ListByTask scan.
@@ -79,7 +79,7 @@ func NewMemoryStore() Store {
 		webhooks:    make(map[string]*model.Webhook),
 		auditLogs:   make(map[string]*model.AuditLog),
 		tokens:      make(map[string]uuid.UUID),
-		capabilities: make(map[string]*model.Capability),
+		capabilities: make(map[string]*model.CapabilityRow),
 		// TASK-404: assignment_events append-only history.
 		assignmentEvents: make(map[string]*model.AssignmentEvent),
 		assignmentByTask: make(map[string][]string),
@@ -100,8 +100,8 @@ func NewMemoryStore() Store {
 // 016_agent_registry.sql. The Postgres impl does not use this —
 // the SQL seed is the source of truth in production — but the
 // memory store needs a copy to behave equivalently.
-func canonicalCapabilitySeed() []model.Capability {
-	return []model.Capability{
+func canonicalCapabilitySeed() []model.CapabilityRow {
+	return []model.CapabilityRow{
 		{Name: "architecture", DisplayName: "Architecture", Category: "architecture", Description: "System design, ADRs, dependency choices."},
 		{Name: "coding", DisplayName: "Coding", Category: "coding", Description: "Source code and unit tests in the source tree."},
 		{Name: "testing", DisplayName: "Testing", Category: "testing", Description: "Test execution, coverage, bug reports."},
@@ -571,7 +571,7 @@ func capabilityMatches(agentCaps []string, want string) bool {
 // capabilities map on memoryStore).
 type memoryCapabilityStore struct{ m *memoryStore }
 
-func (s *memoryCapabilityStore) GetByName(_ context.Context, name string) (*model.Capability, error) {
+func (s *memoryCapabilityStore) GetByName(_ context.Context, name string) (*model.CapabilityRow, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	c, ok := s.m.capabilities[name]
@@ -601,7 +601,7 @@ func (s *memoryCapabilityStore) List(_ context.Context, filter model.CapabilityF
 		limit = 200
 	}
 
-	matches := make([]model.Capability, 0, len(s.m.capabilities))
+	matches := make([]model.CapabilityRow, 0, len(s.m.capabilities))
 	for _, c := range s.m.capabilities {
 		if filter.Category != "" && c.Category != filter.Category {
 			continue

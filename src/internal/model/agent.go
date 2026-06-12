@@ -156,11 +156,18 @@ type AgentCapability struct {
 	GrantedBy    *uuid.UUID `json:"granted_by,omitempty"`
 }
 
-// Capability is the catalog row returned by GET /v1/capabilities
+// CapabilityRow is the catalog row returned by GET /v1/capabilities
 // (api-spec.md §2.1). Note: this is a separate type from
 // AgentCapability because the catalog row does not carry
 // proficiency / granted_at — those are agent-level.
-type Capability struct {
+//
+// The name was renamed from `Capability` to `CapabilityRow` to
+// resolve a redeclaration collision with the `Capability` enum
+// string type in `capability.go` (which carries the `CapXxx`
+// constants). The enum kept its name because it is the more
+// natural name for the domain type (a token, not a row). See
+// TASK-414 CI gate unblock 2026-06-12.
+type CapabilityRow struct {
 	ID          uuid.UUID `json:"id,omitempty"`
 	Name        string    `json:"name"`
 	DisplayName string    `json:"display_name"`
@@ -178,7 +185,7 @@ type CapabilityFilter struct {
 
 // CapabilityListResult is the page envelope for the catalog.
 type CapabilityListResult struct {
-	Data       []Capability
+	Data       []CapabilityRow
 	NextCursor string
 	HasMore    bool
 }

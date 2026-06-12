@@ -98,7 +98,7 @@ type AgentStore interface {
 // catalog (api-spec.md §2.1). The catalog is read-only via the API;
 // writes are managed out-of-band (data-model.md §2 + the 016 seed).
 type CapabilityStore interface {
-	GetByName(ctx context.Context, name string) (*model.Capability, error)
+	GetByName(ctx context.Context, name string) (*model.CapabilityRow, error)
 	List(ctx context.Context, filter model.CapabilityFilter) (*model.CapabilityListResult, error)
 	// Exists is the seam used by AgentService.Create / Update to
 	// validate incoming capability names against the catalog. A
