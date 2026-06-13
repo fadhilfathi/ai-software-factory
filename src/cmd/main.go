@@ -73,10 +73,12 @@ func main() {
 		AllowCredentials: cfg.CORS.AllowCredentials,
 		MaxAge:           cfg.CORS.MaxAge,
 	}
-	rateMW := middleware.RateLimitConfig{
-		RequestsPerMinute: cfg.RateLimit.RequestsPerMinute,
-		Burst:             cfg.RateLimit.Burst,
-	}
+	// TASK-512 follow-up (5th bug): use DefaultRateLimitConfig() as base so KeyFunc
+	// gets a non-nil default (IP-based). Without it, middleware.go:261 panics on every
+	// request with 'invalid memory address or nil pointer dereference' (nil func ptr).
+	rateMW := middleware.DefaultRateLimitConfig()
+	rateMW.RequestsPerMinute = cfg.RateLimit.RequestsPerMinute
+	rateMW.Burst = cfg.RateLimit.Burst
 	r := router.New(svc, corsMW, rateMW)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
