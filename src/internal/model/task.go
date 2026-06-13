@@ -30,13 +30,6 @@ const (
 	TaskOpen       TaskStatus = "open"
 )
 
-const (
-	PriorityLow      TaskPriority = "low"
-	PriorityMedium   TaskPriority = "medium"
-	PriorityHigh     TaskPriority = "high"
-	PriorityCritical TaskPriority = "critical"
-	PriorityNormal   TaskPriority = "medium" // alias for PriorityMedium (legacy code)
-)
 
 // Task represents a unit of work within a project.
 type Task struct {
