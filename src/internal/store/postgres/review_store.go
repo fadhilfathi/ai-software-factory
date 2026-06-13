@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type postgresReviewStore struct {
@@ -21,13 +24,18 @@ func (st *postgresReviewStore) Create(review *model.Review) error {
 	}
 	defer tx.Rollback(ctx)
 
-	queryReview := `
-		INSERT INTO reviews (
-			id, project_id, commit_sha, target_agent_id, reviewer_type, reviewer_id, agent_id, status, result, score, metrics, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+	if review.ID == uuid.Nil {
+		review.ID = uuid.New()
+	}
 
-	_, err = tx.Exec(ctx, queryReview,
-		review.ID, review.ProjectID, review.CommitSHA, review.TargetAgentID, review.ReviewerType, review.ReviewerID, review.AgentID, review.Status, review.Result, review.Score, review.Metrics, review.CreatedAt, review.UpdatedAt,
+	query := `
+		INSERT INTO reviews (id, project_id, target_agent_id, reviewer_id, agent_id, commit_sha, status, result, score, metrics, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+
+	metricsJSON, _ := json.Marshal(review.Metrics)
+	_, err = tx.Exec(ctx, query,
+		review.ID, review.ProjectID, review.TargetAgentID, review.ReviewerID, review.AgentID, review.CommitSHA,
+		review.Status, review.Result, review.Score, metricsJSON, review.CreatedAt, review.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -51,49 +59,34 @@ func (st *postgresReviewStore) Create(review *model.Review) error {
 }
 
 func (st *postgresReviewStore) GetByID(id uuid.UUID) (*model.Review, error) {
-	query := `
-		SELECT id, project_id, commit_sha, target_agent_id, reviewer_type, reviewer_id, agent_id, status, result, score, metrics, created_at, updated_at
-		FROM reviews
-		WHERE id = $1`
+	ctx := context.Background()
+	row := st.s.pool.QueryRow(ctx, `
+		SELECT id, project_id, target_agent_id, reviewer_id, agent_id, commit_sha, status, result, score, metrics, created_at, updated_at
+		FROM reviews WHERE id = $1`, id)
+	return scanReview(row)
+}
 
-	var review model.Review
-	err := st.s.pool.QueryRow(context.Background(), query, id).Scan(
-		&review.ID, &review.ProjectID, &review.CommitSHA, &review.TargetAgentID, &review.ReviewerType, &review.ReviewerID, &review.AgentID, &review.Status, &review.Result, &review.Score, &review.Metrics, &review.CreatedAt, &review.UpdatedAt,
-	)
-	if err == pgx.ErrNoRows {
-		return nil, store.ErrNotFound
-	}
+func scanReview(row pgx.Row) (*model.Review, error) {
+	var r model.Review
+	var metricsJSON []byte
+	err := row.Scan(&r.ID, &r.ProjectID, &r.TargetAgentID, &r.ReviewerID, &r.AgentID, &r.CommitSHA, &r.Status, &r.Result, &r.Score, &metricsJSON, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
-		return nil, err
-	}
-
-	// Fetch issues
-	issuesQuery := `SELECT id, review_id, severity, file, line, message, suggestion FROM review_issues WHERE review_id = $1`
-	rows, err := st.s.pool.Query(context.Background(), issuesQuery, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var issue model.ReviewIssue
-		if err := rows.Scan(&issue.ID, &issue.ReviewID, &issue.Severity, &issue.File, &issue.Line, &issue.Message, &issue.Suggestion); err != nil {
-			return nil, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, store.ErrNotFound
 		}
-		review.Issues = append(review.Issues, issue)
+		return nil, err
 	}
-
-	return &review, nil
+	if len(metricsJSON) > 0 {
+		_ = json.Unmarshal(metricsJSON, &r.Metrics)
+	}
+	return &r, nil
 }
 
 func (st *postgresReviewStore) ListByProject(projectID uuid.UUID) ([]*model.Review, error) {
-	query := `
-		SELECT id, project_id, commit_sha, target_agent_id, reviewer_type, reviewer_id, agent_id, status, result, score, metrics, created_at, updated_at
-		FROM reviews
-		WHERE project_id = $1
-		ORDER BY created_at DESC`
-
-	rows, err := st.s.pool.Query(context.Background(), query, projectID)
+	ctx := context.Background()
+	rows, err := st.s.pool.Query(ctx, `
+		SELECT id, project_id, target_agent_id, reviewer_id, agent_id, commit_sha, status, result, score, metrics, created_at, updated_at
+		FROM reviews WHERE project_id = $1 ORDER BY created_at DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,14 +94,16 @@ func (st *postgresReviewStore) ListByProject(projectID uuid.UUID) ([]*model.Revi
 
 	var reviews []*model.Review
 	for rows.Next() {
-		var review model.Review
-		err := rows.Scan(
-			&review.ID, &review.ProjectID, &review.CommitSHA, &review.TargetAgentID, &review.ReviewerType, &review.ReviewerID, &review.AgentID, &review.Status, &review.Result, &review.Score, &review.Metrics, &review.CreatedAt, &review.UpdatedAt,
-		)
+		var r model.Review
+		var metricsJSON []byte
+		err := rows.Scan(&r.ID, &r.ProjectID, &r.TargetAgentID, &r.ReviewerID, &r.AgentID, &r.CommitSHA, &r.Status, &r.Result, &r.Score, &metricsJSON, &r.CreatedAt, &r.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
-		reviews = append(reviews, &review)
+		if len(metricsJSON) > 0 {
+			_ = json.Unmarshal(metricsJSON, &r.Metrics)
+		}
+		reviews = append(reviews, &r)
 	}
 	return reviews, nil
 }
@@ -154,4 +149,46 @@ func (st *postgresReviewStore) Update(review *model.Review) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (st *postgresReviewStore) CreateComment(c *model.ReviewComment) error {
+	ctx := context.Background()
+	tx, err := st.s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	query := `
+		INSERT INTO review_comments (id, review_id, file, line, author_id, content, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+	_, err = tx.Exec(ctx, query, c.ID, c.ReviewID, c.File, c.Line, c.AuthorID, c.Content, c.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (st *postgresReviewStore) ListComments(reviewID uuid.UUID) ([]*model.ReviewComment, error) {
+	ctx := context.Background()
+	rows, err := st.s.pool.Query(ctx, `
+		SELECT id, review_id, file, line, author_id, content, created_at
+		FROM review_comments WHERE review_id = $1 ORDER BY created_at ASC`, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comments []*model.ReviewComment
+	for rows.Next() {
+		var c model.ReviewComment
+		err := rows.Scan(&c.ID, &c.ReviewID, &c.File, &c.Line, &c.AuthorID, &c.Content, &c.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		comments = append(comments, &c)
+	}
+	return comments, nil
 }

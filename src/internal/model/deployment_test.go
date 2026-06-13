@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,8 +41,8 @@ func TestDeploymentStruct(t *testing.T) {
 	completedAt := now
 
 	deployment := Deployment{
-		ID:            "deploy-123",
-		ProjectID:     "proj-456",
+		ID:            uuid.MustParse("00000000-0000-0000-0000-000000000050"),
+		ProjectID:     uuid.MustParse("00000000-0000-0000-0000-000000000051"),
 		Environment:   EnvProduction,
 		Branch:        "main",
 		Status:        DeployCompleted,
@@ -60,8 +61,8 @@ func TestDeploymentStruct(t *testing.T) {
 		UpdatedAt:    now,
 	}
 
-	assert.Equal(t, "deploy-123", deployment.ID)
-	assert.Equal(t, "proj-456", deployment.ProjectID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000050"), deployment.ID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000051"), deployment.ProjectID)
 	assert.Equal(t, EnvProduction, deployment.Environment)
 	assert.Equal(t, "main", deployment.Branch)
 	assert.Equal(t, DeployCompleted, deployment.Status)
@@ -77,8 +78,8 @@ func TestDeploymentStruct(t *testing.T) {
 
 func TestDeploymentWithNilTimestamps(t *testing.T) {
 	deployment := Deployment{
-		ID:          "deploy-pending",
-		ProjectID:   "proj-1",
+		ID:          uuid.MustParse("00000000-0000-0000-0000-000000000052"),
+		ProjectID:   uuid.MustParse("00000000-0000-0000-0000-000000000053"),
 		Environment: EnvStaging,
 		Branch:      "feature",
 		Status:      DeployQueued,

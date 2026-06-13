@@ -12,6 +12,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// userIDKey is the context key for the authenticated user's ID.
+// Mirrors middleware.UserIDKey but defined locally to avoid an import cycle
+// (middleware -> router -> handler -> service). Sprint 5: extract to a
+// shared contextkey package.
+const userIDKey = "user_id"
+
 // CodeService handles code generation and file management.
 type CodeService struct {
 	store store.Store
@@ -24,7 +30,7 @@ func NewCodeService(s store.Store, log *zap.Logger) *CodeService {
 
 // getUserID extracts the user ID from context
 func (s *CodeService) getUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(UserIDKey).(string)
+	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
 }
 
@@ -34,7 +40,15 @@ func (s *CodeService) checkProjectAccess(ctx context.Context, projectID string) 
 	if !ok {
 		return false
 	}
-	return s.store.Users().CheckProjectAccess(userID, projectID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return false
+	}
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return false
+	}
+	return s.store.Users().CheckProjectAccess(uid, pid)
 }
 
 // GenerateCodeRequest carries code generation input.
@@ -59,7 +73,7 @@ func (s *CodeService) GenerateCode(ctx context.Context, req GenerateCodeRequest)
 	}
 
 	// Verify project exists
-	if _, err := s.store.Projects().GetByID(req.ProjectID); err != nil {
+	if _, err := s.store.Projects().GetByID(uuid.MustParse(req.ProjectID)); err != nil {
 		return nil, notFound("Project not found")
 	}
 
@@ -89,7 +103,11 @@ func (s *CodeService) GetFile(ctx context.Context, projectID, path string) (*mod
 	if !s.checkProjectAccess(ctx, projectID) {
 		return nil, notFound("File not found")
 	}
-	file, err := s.store.Code().GetFile(projectID, path)
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return nil, notFound("File not found")
+	}
+	file, err := s.store.Code().GetFile(pid, path)
 	if err != nil {
 		return nil, notFound("File not found")
 	}
@@ -136,7 +154,7 @@ func (s *CodeService) CreateCommit(ctx context.Context, req CreateCommitRequest)
 	// Save files
 	for _, f := range req.Files {
 		file := &model.ProjectFile{
-			ProjectID:    req.ProjectID,
+			ProjectID:    uuid.MustParse(req.ProjectID),
 			Path:         f.Path,
 			Content:      f.Content,
 			Language:     detectLanguage(f.Path),

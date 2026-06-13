@@ -1,170 +1,260 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import Link from "next/link";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { useAgents } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorBlock } from "@/components/ui/ErrorBlock";
-import { FilterBar, SearchInput } from "@/components/shared/FilterBar";
-import { MetricCard } from "@/components/shared/MetricCard";
-import { AgentCard } from "@/components/agents/AgentCard";
-import type { AgentStatus_ } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 
-const ROLE_TABS = [
-  { value: "all", label: "All Agents", icon: "🤖" },
-  { value: "pm", label: "PM", color: "#10b981" },
-  { value: "architect", label: "Architect", color: "#0ea5e9" },
-  { value: "developer", label: "Developer", color: "#6366f1" },
-  { value: "reviewer", label: "Review", color: "#f97316" },
-  { value: "qa", label: "QA", color: "#ec4899" },
-  { value: "devops", label: "DevOps", color: "#8b5cf6" },
-];
+import { useAgents, useCapabilities } from "@/lib/hooks"
+import { useProjectFilters } from "@/hooks/useProjectFilters"
+import { cn } from "@/lib/utils"
+import type {
+  AgentListFilters,
+  AgentStatus,
+} from "@/lib/types"
 
-export default function AgentDashboardPage() {
-  const [activeTab, setActiveTab] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [search, setSearch] = useState("");
+import { PageHeader } from "@/components/layout/PageHeader"
+import { FilterBar, SearchInput } from "@/components/shared/FilterBar"
+import { ErrorBlock } from "@/components/ui/ErrorBlock"
+import { Skeleton } from "@/components/ui/Skeleton"
+import { EmptyState } from "@/components/ui/EmptyState"
+import { Toggle } from "@/components/ui/Toggle"
+import { PaginationInfo } from "@/components/shared/PaginationInfo"
+import { AgentCard } from "@/components/agents/AgentCard"
+import { CapabilityMultiSelect } from "@/components/agents/CapabilityMultiSelect"
+import { ProjectPickerGate } from "@/components/agents/ProjectPickerGate"
 
-  const filters: Record<string, string | undefined> = {};
-  if (statusFilter) filters.status = statusFilter;
-  if (activeTab !== "all") filters.role = activeTab;
-  if (search) filters.search = search;
-  filters.limit = "24";
+const ROLE_TABS: Array<{ value: string; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "architect", label: "Architects" },
+  { value: "developer", label: "Developers" },
+  { value: "qa", label: "QA" },
+  { value: "devops", label: "DevOps" },
+  { value: "security", label: "Security" },
+  { value: "lead", label: "Leads" },
+]
 
-  const { data, isLoading, isError, error } = useAgents(filters);
-  const agents = data?.data ?? [];
+const STATUS_OPTIONS: Array<{ value: AgentStatus | "all"; label: string }> = [
+  { value: "all", label: "All statuses" },
+  { value: "initializing", label: "Initializing" },
+  { value: "idle", label: "Idle" },
+  { value: "busy", label: "Busy" },
+  { value: "paused", label: "Paused" },
+  { value: "error", label: "Error" },
+  { value: "retired", label: "Retired" },
+]
 
-  // Summary stats (mocked or derived if available)
-  const totalTasks = agents.reduce((acc, a) => acc + (a.tasks_completed ?? 0), 0);
-  const activeCount = agents.filter(a => a.status === "working").length;
+const SORT_OPTIONS: Array<{ value: NonNullable<AgentListFilters["sort"]>; label: string }> = [
+  { value: "-last_active_at", label: "Most recently active" },
+  { value: "last_active_at", label: "Least recently active" },
+  { value: "name", label: "Name (A→Z)" },
+  { value: "-name", label: "Name (Z→A)" },
+  { value: "-created_at", label: "Newest first" },
+  { value: "created_at", label: "Oldest first" },
+]
+
+const PAGE_SIZE = 24
+
+export default function AgentsListPage() {
+  return (
+    <ProjectPickerGate>
+      <AgentsListContent />
+    </ProjectPickerGate>
+  )
+}
+
+function AgentsListContent() {
+  const { projectId } = useProjectFilters()
+  const [role, setRole] = useState<string>("all")
+  const [status, setStatus] = useState<AgentStatus | "all">("all")
+  const [capabilities, setCapabilities] = useState<string[]>([])
+  const [search, setSearch] = useState("")
+  const [sort, setSort] =
+    useState<NonNullable<AgentListFilters["sort"]>>("-last_active_at")
+  const [includeRetired, setIncludeRetired] = useState(false)
+  const [cursors, setCursors] = useState<string[]>([])
+  const [page, setPage] = useState(0)
+
+  // Reset pagination whenever a filter changes.
+  useEffect(() => {
+    setCursors([])
+    setPage(0)
+  }, [role, status, capabilities, search, sort, includeRetired])
+
+  const filters: AgentListFilters = {
+    role: role === "all" ? undefined : role,
+    status: status === "all" ? undefined : status,
+    capability: capabilities.length > 0 ? capabilities : undefined,
+    search: search.trim() || undefined,
+    sort,
+    include_retired: includeRetired || undefined,
+    cursor: cursors[page],
+    limit: PAGE_SIZE,
+  }
+
+  const agentsQuery = useAgents(filters)
+  const capabilitiesQuery = useCapabilities()
+  const catalogIndex = useMemo(() => {
+    const m = new Map<string, NonNullable<typeof capabilitiesQuery.data>["data"][number]>()
+    for (const c of capabilitiesQuery.data?.data ?? []) m.set(c.name, c)
+    return m
+  }, [capabilitiesQuery.data])
+
+  const agents = agentsQuery.data?.data ?? []
+  const pageInfo = agentsQuery.data?.page_info
+  const hasMore = pageInfo?.has_more ?? false
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        title="Agent Registry"
-        subtitle="Real-time monitoring and management of the factory's AI workforce."
+        title="Agents"
+        description="Manage the agents in this project. Filter by role, status, or capability."
         actions={
           <Link
             href="/agents/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700"
           >
-            + Spawn New Agent
+            <span aria-hidden>+</span> New agent
           </Link>
         }
       />
 
-      {/* Global Metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard 
-          label="Total Agents" 
-          value={agents.length} 
-          trend="+2 this week" 
-          trendUp 
-        />
-        <MetricCard 
-          label="Active Now" 
-          value={activeCount} 
-          trend="85% utilization" 
-          trendNeutral 
-        />
-        <MetricCard 
-          label="Tasks Completed" 
-          value={totalTasks} 
-          trend="↑ 12% vs last week" 
-          trendUp 
-        />
-        <MetricCard 
-          label="Avg Cost/Task" 
-          value="$0.42" 
-          trend="↓ $0.05 saved" 
-          trendUp 
-        />
+      {/* Role tabs */}
+      <div className="border-b border-slate-200 dark:border-slate-800">
+        <nav className="-mb-px flex flex-wrap gap-2" aria-label="Filter by role">
+          {ROLE_TABS.map((tab) => {
+            const active = role === tab.value
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setRole(tab.value)}
+                className={cn(
+                  "border-b-2 px-3 py-2 text-sm font-medium transition",
+                  active
+                    ? "border-sky-500 text-sky-700 dark:text-sky-300"
+                    : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200",
+                )}
+                aria-pressed={active}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </nav>
       </div>
 
-      {/* Agent Role Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-800 pb-px">
-        {ROLE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all border-b-2",
-              activeTab === tab.value
-                ? "border-emerald-500 text-emerald-400 bg-emerald-500/5"
-                : "border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-900/40"
-            )}
-          >
-            {tab.color && (
-              <div 
-                className="h-2 w-2 rounded-full" 
-                style={{ backgroundColor: tab.color }} 
-              />
-            )}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Search & Filters */}
       <FilterBar>
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search agents by name or model..."
-          className="flex-1"
+          placeholder="Search agents by name…"
+          className="min-w-[18rem] flex-1"
         />
         <FilterBar.Select
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: "idle", label: "Idle Only" },
-            { value: "working", label: "Working Only" },
-            { value: "failed", label: "Failed/Error" },
-          ]}
-          placeholder="All Statuses"
+          value={status}
+          onChange={(v) => setStatus(v as AgentStatus | "all")}
+          options={STATUS_OPTIONS}
+          aria-label="Filter by status"
+          className="w-44"
         />
+        <FilterBar.Select
+          value={sort}
+          onChange={(v) =>
+            setSort(v as NonNullable<AgentListFilters["sort"]>)
+          }
+          options={SORT_OPTIONS}
+          aria-label="Sort agents"
+          className="w-56"
+        />
+        <CapabilityMultiSelect
+          value={capabilities}
+          onChange={setCapabilities}
+          className="w-72"
+        />
+        <label className="ml-auto flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <Toggle
+            checked={includeRetired}
+            onChange={setIncludeRetired}
+            label="Include retired"
+          />
+          Include retired
+        </label>
       </FilterBar>
 
-      {isError && (
+      {agentsQuery.isError ? (
         <ErrorBlock
-          message={(error as Error)?.message ?? "Unknown error"}
-          title="Failed to load agent registry"
+          error={agentsQuery.error}
+          onRetry={() => agentsQuery.refetch()}
         />
-      )}
-
-      {/* Agents Grid */}
-      {isLoading ? (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      ) : agentsQuery.isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+            <Skeleton key={i} className="h-44" />
           ))}
         </div>
       ) : agents.length === 0 ? (
         <EmptyState
-          icon="🤖"
-          title="No agents found in the registry"
-          description="Try adjusting your filters or spawn a new agent to expand the workforce."
+          title="No agents match your filters"
+          description="Try clearing a filter, including retired agents, or creating a new agent."
+          action={
+            <Link
+              href="/agents/new"
+              className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+            >
+              Create an agent
+            </Link>
+          }
         />
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {agents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {agents.map((a) => (
+              <AgentCard
+                key={a.id}
+                agent={a}
+                capabilities={Array.from(catalogIndex.values())}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
+            <PaginationInfo
+              page={page + 1}
+              total={agents.length}
+              showing={agents.length}
+              pages={hasMore ? page + 2 : page + 1}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-700"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={!hasMore || !pageInfo?.next_cursor}
+                onClick={() => {
+                  if (!pageInfo?.next_cursor) return
+                  setCursors((c) => [...c, pageInfo.next_cursor as string])
+                  setPage((p) => p + 1)
+                }}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Detailed Performance Link */}
-      <div className="flex justify-center pt-8">
-        <Link
-          href="/dashboard"
-          className="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-emerald-500 transition-colors"
-        >
-          View Factory Performance Report &rarr;
-        </Link>
-      </div>
+      {!projectId ? (
+        <p className="text-xs text-slate-400">
+          Tip: agent management is project-scoped. Use the picker at the top
+          to switch projects.
+        </p>
+      ) : null}
     </div>
-  );
+  )
 }

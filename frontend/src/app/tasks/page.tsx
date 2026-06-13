@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { useProjects, useTasks, useUpdateTaskStatus, useCreateTask } from "@/lib/hooks";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
-import type { TaskStatus } from "@/lib/types";
+import type { TaskStatus, Project } from "@/lib/types";
 
 const PRIORITY_OPTIONS = [
   { value: "critical", label: "Critical" },
@@ -20,7 +20,10 @@ export default function TaskBoardPage() {
   const [agentFilter, setAgentFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
 
-  const effectiveProjectId = selectedProjectId || (projectsData?.data?.[0]?.id ?? "");
+  // useProjects returns a bare array; legacy callers used to read
+  // `.data` from an envelope. Unwrap defensively.
+  const projectsList = (Array.isArray(projectsData) ? projectsData : (projectsData as { data?: Project[] } | undefined)?.data ?? []) as Project[];
+  const effectiveProjectId = selectedProjectId || (projectsList[0]?.id ?? "");
   const { data: tasks, isLoading: tasksLoading } = useTasks(effectiveProjectId);
   const updateTaskStatus = useUpdateTaskStatus();
   const createTask = useCreateTask();
@@ -41,7 +44,7 @@ export default function TaskBoardPage() {
     });
   };
 
-  const projectOptions = (projectsData?.data ?? []).map((p) => ({
+  const projectOptions = projectsList.map((p) => ({
     value: p.id,
     label: p.name,
   }));

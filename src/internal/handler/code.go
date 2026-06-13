@@ -51,7 +51,7 @@ func (h *CodeHandler) Generate(c *gin.Context) {
 	}
 
 	writeJSON(c, http.StatusAccepted, generateCodeResponse{
-		ID:            result.ID,
+		ID:            result.ID.String(),
 		Status:        string(result.Status),
 		EstimatedTime: result.EstimatedTime,
 	})

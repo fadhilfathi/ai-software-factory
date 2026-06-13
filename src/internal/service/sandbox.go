@@ -101,7 +101,7 @@ func (s *SandboxService) Run(ctx context.Context, req SandboxRequest) (*SandboxR
 	}
 	defer out.Close()
 
-	var stdout, stderr bytes.Buffer
+	var stdout bytes.Buffer
 	// Docker multiplexes stdout and stderr in the stream returned by ContainerLogs
 	// when Tty is false. We should use stdcopy, but for now, we'll just read it all.
 	// TODO: Use stdcopy.StdCopy to properly separate stdout and stderr.

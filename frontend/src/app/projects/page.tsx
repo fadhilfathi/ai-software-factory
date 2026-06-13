@@ -33,7 +33,10 @@ function ProjectsListContent() {
 
   const { data, isLoading, isError, error } = useProjects(queryFilters);
 
-  const projects = data?.data ?? [];
+  // useProjects returns a bare array; legacy callers used to read
+  // `.data` from an envelope. Unwrap defensively to keep both shapes
+  // working until the rest of the page is migrated.
+  const projects = Array.isArray(data) ? data : ((data as { data?: unknown[] } | undefined)?.data ?? []) as never[];
   const showEmptyMessage = !search && (!filters.status || filters.status === "all");
 
   return (
@@ -101,16 +104,21 @@ function ProjectsListContent() {
       )}
 
       {/* Pagination info */}
-      {data?.pagination && data.pagination.total > 0 && (
-        <div className="pt-4 border-t border-gray-800/50">
-          <PaginationInfo
-            total={data.pagination.total}
-            page={data.pagination.page}
-            pages={data.pagination.pages}
-            showing={projects.length}
-          />
-        </div>
-      )}
+      {(() => {
+        const envelope = data as { pagination?: { total?: number; pages?: number; page?: number } } | undefined
+        if (Array.isArray(data)) return null
+        if (!envelope?.pagination || (envelope.pagination.total ?? 0) <= 0) return null
+        return (
+          <div className="pt-4 border-t border-gray-800/50">
+            <PaginationInfo
+              total={envelope.pagination.total ?? 0}
+              page={envelope.pagination.page ?? 1}
+              pages={envelope.pagination.pages ?? 1}
+              showing={projects.length}
+            />
+          </div>
+        )
+      })()}
     </div>
   );
 }

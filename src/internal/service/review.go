@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
@@ -42,23 +43,25 @@ type CreateReviewRequest struct {
 
 // CreateReview creates a code review request.
 func (s *ReviewService) CreateReview(req CreateReviewRequest) (*model.Review, *Error) {
-	var errs validation.Errors
-	validation.NotEmpty(req.ProjectID, "project_id", "Project ID", &errs)
-	validation.NotEmpty(req.CommitSHA, "commit_sha", "Commit SHA", &errs)
+	errs := &validation.Errors{}
+	validation.NotEmpty(req.ProjectID, "project_id", "Project ID", errs)
+	validation.NotEmpty(req.CommitSHA, "commit_sha", "Commit SHA", errs)
 	if errs.HasErrors() {
-		return nil, validationError(errs)
+		return nil, validationError(*errs)
 	}
 
 	pID, err := uuid.Parse(req.ProjectID)
 	if err != nil {
-		return nil, validationError(validation.Errors{"project_id": "Invalid Project ID format"})
+		errs.Add("project_id", "Invalid Project ID format")
+		return nil, validationError(*errs)
 	}
 
 	var targetAgentID uuid.UUID
 	if req.TargetAgentID != "" {
 		targetAgentID, err = uuid.Parse(req.TargetAgentID)
 		if err != nil {
-			return nil, validationError(validation.Errors{"target_agent_id": "Invalid Agent ID format"})
+			errs.Add("target_agent_id", "Invalid Agent ID format")
+			return nil, validationError(*errs)
 		}
 	}
 
@@ -142,9 +145,11 @@ func (s *ReviewService) processReview(ctx context.Context, review *model.Review)
 
 // GetReview returns a review by ID.
 func (s *ReviewService) GetReview(id string) (*model.Review, *Error) {
+	errs := &validation.Errors{}
 	uID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, validationError(validation.Errors{"id": "Invalid Review ID format"})
+		errs.Add("id", "Invalid Review ID format")
+		return nil, validationError(*errs)
 	}
 	review, err := s.store.Reviews().GetByID(uID)
 	if err != nil {

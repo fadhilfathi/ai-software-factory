@@ -9,15 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func publicRoutes(c *gin.Context) bool {
-	public := map[string]bool{
-		"GET /v1/healthz":         true,
-		"POST /v1/auth/login":     true,
-		"POST /v1/auth/refresh":   true,
-		"POST /v1/users/register": true,
-	}
-	key := c.Request.Method + " " + c.FullPath()
-	return public[key]
+// publicRouteSet is the set of (method, path-prefix) pairs that bypass auth.
+// Sprint 4: Auth middleware takes map[string]bool keyed by method+path.
+// Matches the convention used in other services in the repo.
+var publicRouteSet = map[string]bool{
+	"GET /v1/healthz":         true,
+	"POST /v1/auth/login":     true,
+	"POST /v1/auth/refresh":   true,
+	"POST /v1/users/register": true,
 }
 
 func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
@@ -28,14 +27,15 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 	r.Use(middleware.RequestID())
 	r.Use(middleware.CORS(corsConfig))
 	r.Use(middleware.RateLimit(rateLimitConfig))
-	r.Use(middleware.Auth(svc.Auth, publicRoutes))
+	r.Use(middleware.Auth(svc.Auth, publicRouteSet))
 
 	auth := handler.NewAuthHandler(svc.Auth)
 	projects := handler.NewProjectHandler(svc.Project)
 	agents := handler.NewAgentHandler(svc.Agent)
+	capabilities := handler.NewCapabilityHandler(svc.Agent) // TASK-403: capability routes moved off AgentHandler
 	tasks := handler.NewTaskHandler(svc.Task)
 	assignments := handler.NewAssignmentHandler(svc.Assignment)
-	executions := handler.NewExecutionHandler(svc.Execution)
+	executions := handler.NewExecutionHandler(svc.Execution, svc.Log)
 	deliverables := handler.NewDeliverableHandler(svc.Deliverable)
 	code := handler.NewCodeHandler(svc.Code)
 	reviews := handler.NewReviewHandler(svc.Review)
@@ -65,25 +65,38 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 		v1.GET("/agents/:id", agents.Get)
 		v1.PUT("/agents/:id", agents.Update)
 		v1.DELETE("/agents/:id", agents.Delete)
-		v1.POST("/agents/:id/heartbeat", agents.Heartbeat)
+		// TASK-403: capability routes moved to CapabilityHandler.
+		v1.GET("/agents/:id/capabilities", capabilities.ListAgentCapabilities)
+		v1.GET("/capabilities", capabilities.ListCatalogCapabilities)
 
 		v1.POST("/projects/:projectId/tasks", tasks.Create)
 		v1.GET("/projects/:projectId/tasks", tasks.List)
 		v1.GET("/tasks/:id", tasks.Get)
 		v1.PUT("/tasks/:id", tasks.Update)
 		v1.DELETE("/tasks/:id", tasks.Delete)
-		v1.PATCH("/tasks/:id/status", tasks.UpdateStatus)
+		// TASK-404: assignment endpoints. POST creates/updates the
+		// assignment + appends to assignment_events. GET returns
+		// the history DESC by assigned_at.
 		v1.POST("/tasks/:id/assign", assignments.AssignTask)
+		v1.GET("/tasks/:id/history", assignments.ListHistory)
+		v1.PATCH("/tasks/:id/status", tasks.UpdateStatus)
 
+		// TASK-405: Sprint 4 Execution Tracking System.
+		// PATCH is mounted on the resource itself (per
+		// api-spec.md §5) rather than on a /status sub-path.
 		v1.POST("/executions", executions.Create)
 		v1.GET("/executions", executions.List)
-		v1.GET("/executions/:id", executions.Get)
-		v1.PATCH("/executions/:id/status", executions.UpdateStatus)
+		v1.GET("/executions/:id", executions.GetByID)
+		v1.PATCH("/executions/:id", executions.Patch)
 
+		// TASK-406: Sprint 4 Deliverable Storage. 5 routes:
+		// POST/GET list/GET single/PUT on the resource itself,
+		// plus GET versions on the history sub-resource.
 		v1.POST("/deliverables", deliverables.Create)
 		v1.GET("/deliverables", deliverables.List)
 		v1.GET("/deliverables/:id", deliverables.Get)
 		v1.PUT("/deliverables/:id", deliverables.Update)
+		v1.GET("/deliverables/:id/versions", deliverables.ListVersions)
 
 		v1.POST("/code/generate", code.Generate)
 		v1.GET("/code/:projectId/files/*path", code.GetFile)

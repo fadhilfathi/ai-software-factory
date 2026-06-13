@@ -74,7 +74,13 @@ func (s *UserService) Register(req RegisterRequest) (*model.User, *Error) {
 
 // GetProfile returns a user by ID.
 func (s *UserService) GetProfile(userID string) (*model.User, *Error) {
-	user, err := s.store.Users().GetByID(userID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		errs := &validation.Errors{}
+		errs.Add("user_id", "Invalid User ID format")
+		return nil, validationError(*errs)
+	}
+	user, err := s.store.Users().GetByID(uid)
 	if err != nil {
 		return nil, notFound("User not found")
 	}

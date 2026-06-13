@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -47,11 +48,11 @@ func TestReviewIssueWithoutSuggestion(t *testing.T) {
 
 func TestReviewMetricsStruct(t *testing.T) {
 	metrics := ReviewMetrics{
-		Complexity:   "moderate",
+		Complexity:   5,
 		TestCoverage: 85.5,
 		Duplications: 3,
 	}
-	assert.Equal(t, "moderate", metrics.Complexity)
+	assert.Equal(t, 5, metrics.Complexity)
 	assert.Equal(t, 85.5, metrics.TestCoverage)
 	assert.Equal(t, 3, metrics.Duplications)
 }
@@ -59,8 +60,8 @@ func TestReviewMetricsStruct(t *testing.T) {
 func TestReviewStruct(t *testing.T) {
 	now := time.Now().UTC()
 	review := Review{
-		ID:           "review-123",
-		ProjectID:    "proj-456",
+		ID:           uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		ProjectID:    uuid.MustParse("22222222-2222-2222-2222-222222222222"),
 		CommitSHA:    "abc123def",
 		ReviewerType: "ai",
 		Reviewer:     "reviewer-agent-1",
@@ -72,7 +73,7 @@ func TestReviewStruct(t *testing.T) {
 			{Severity: "medium", File: "handler.go", Line: 20, Message: "Missing validation"},
 		},
 		Metrics: &ReviewMetrics{
-			Complexity:   "low",
+			Complexity:   3,
 			TestCoverage: 90.0,
 			Duplications: 0,
 		},
@@ -80,8 +81,8 @@ func TestReviewStruct(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	assert.Equal(t, "review-123", review.ID)
-	assert.Equal(t, "proj-456", review.ProjectID)
+	assert.Equal(t, uuid.MustParse("11111111-1111-1111-1111-111111111111"), review.ID)
+	assert.Equal(t, uuid.MustParse("22222222-2222-2222-2222-222222222222"), review.ProjectID)
 	assert.Equal(t, "abc123def", review.CommitSHA)
 	assert.Equal(t, "ai", review.ReviewerType)
 	assert.Equal(t, "reviewer-agent-1", review.Reviewer)
@@ -91,7 +92,7 @@ func TestReviewStruct(t *testing.T) {
 	assert.Len(t, review.Issues, 2)
 	assert.Equal(t, "low", review.Issues[0].Severity)
 	assert.NotNil(t, review.Metrics)
-	assert.Equal(t, "low", review.Metrics.Complexity)
+	assert.Equal(t, 3, review.Metrics.Complexity)
 	assert.Equal(t, 90.0, review.Metrics.TestCoverage)
 	assert.Equal(t, now.Add(-time.Hour), review.CreatedAt)
 	assert.Equal(t, now, review.UpdatedAt)
@@ -99,8 +100,8 @@ func TestReviewStruct(t *testing.T) {
 
 func TestReviewWithNilMetrics(t *testing.T) {
 	review := Review{
-		ID:        "review-no-metrics",
-		ProjectID: "proj-1",
+		ID:        uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		ProjectID: uuid.MustParse("44444444-4444-4444-4444-444444444444"),
 		CommitSHA: "sha1",
 		Status:    ReviewInProgress,
 	}

@@ -55,7 +55,7 @@ func (h *WebhookHandler) Register(c *gin.Context) {
 	}
 
 	writeJSON(c, http.StatusCreated, webhookResponse{
-		ID:        webhook.ID,
+		ID:        webhook.ID.String(),
 		URL:       webhook.URL,
 		Events:    eventStrings,
 		Active:    webhook.Active,

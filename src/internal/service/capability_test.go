@@ -1,16 +1,37 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
+// newTestCapabilityService wires a CapabilityService with a nil
+// store. Use newTestCapabilityServiceWithStore (or a hand-rolled
+// store mock) when the test needs to exercise the live-store
+// validation seam (ValidateAgentHasCapabilities).
 func newTestCapabilityService() *CapabilityService {
-	return NewCapabilityService()
+	return NewCapabilityService(nil, zap.NewNop())
 }
+
+// fixedGrantedAt is the timestamp used by the capability-grant
+// fixtures in the TASK-403 ValidateAgentHasCapabilities tests. A
+// fixed value keeps assertions deterministic without time.Now
+// race-conditions.
+var fixedGrantedAt = time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+
+// --- Pre-Sprint-4 helper tests --------------------------------------
+// These cover CapabilitiesForRole, TaskRequiresCapability,
+// AgentHasCapability, FindCompatibleAgents, AssignmentScore and
+// the model.Capability constants. They have not changed in TASK-403.
 
 func TestTaskRequiresCapability(t *testing.T) {
 	svc := newTestCapabilityService()
@@ -182,14 +203,46 @@ func TestAllCapabilities_ContainsAll(t *testing.T) {
 		model.CapDevOps,
 		model.CapProjectMgmt,
 		model.CapDataEngineering,
+		model.CapLeadership,
 	}
 	assert.ElementsMatch(t, expected, caps)
+}
+
+func TestAssignableCapabilities_ExcludesLeadership(t *testing.T) {
+	// Per the TASK-403 brief, the 5 assignable caps are the
+	// public assignable surface for task-assignment constraints.
+	// Leadership is in the catalog (migration 016 seed) but
+	// reserved for the Leader and must never appear in a task's
+	// required_capabilities list.
+	caps := model.AssignableCapabilities()
+	assert.ElementsMatch(t, []model.Capability{
+		model.CapArchitecture, model.CapCoding, model.CapTesting,
+		model.CapSecurity, model.CapDevOps,
+	}, caps)
+	for _, c := range caps {
+		assert.NotEqual(t, model.CapLeadership, c, "leadership must not be in the assignable set")
+	}
+}
+
+func TestIsAssignableCapability(t *testing.T) {
+	assert.True(t, model.IsAssignableCapability("coding"))
+	assert.True(t, model.IsAssignableCapability("testing"))
+	assert.True(t, model.IsAssignableCapability("architecture"))
+	assert.True(t, model.IsAssignableCapability("security"))
+	assert.True(t, model.IsAssignableCapability("devops"))
+	assert.False(t, model.IsAssignableCapability("leadership"))
+	assert.False(t, model.IsAssignableCapability("documentation"))
+	assert.False(t, model.IsAssignableCapability("project_management"))
+	assert.False(t, model.IsAssignableCapability("data_engineering"))
+	assert.False(t, model.IsAssignableCapability("unknown"))
+	assert.False(t, model.IsAssignableCapability(""))
 }
 
 func TestValidCapability_Valid(t *testing.T) {
 	assert.True(t, model.ValidCapability("coding"))
 	assert.True(t, model.ValidCapability("security"))
 	assert.True(t, model.ValidCapability("devops"))
+	assert.True(t, model.ValidCapability("leadership"))
 }
 
 func TestValidCapability_Invalid(t *testing.T) {
@@ -212,6 +265,7 @@ func TestRoleCapabilities_AllRoles(t *testing.T) {
 		{"devops", []model.Capability{model.CapDevOps, model.CapArchitecture}},
 		{"techwriter", []model.Capability{model.CapDocumentation}},
 		{"data_engineer", []model.Capability{model.CapDataEngineering, model.CapCoding}},
+		{"leader", []model.Capability{model.CapLeadership}},
 	}
 
 	for _, tt := range tests {
@@ -231,4 +285,158 @@ func TestDefaultCapabilitiesForRole_Strings(t *testing.T) {
 func TestDefaultCapabilitiesForRole_Unknown(t *testing.T) {
 	caps := model.DefaultCapabilitiesForRole("unknown_role")
 	assert.Nil(t, caps)
+}
+
+// --- TASK-403: ValidateAgentHasCapabilities tests -------------------
+
+// mockCapabilityStore is a hand-rolled mock for store.Store that
+// exposes only the surface ValidateAgentHasCapabilities touches:
+// Agents().ListCapabilitiesByAgent. The mock returns canned
+// capability grants for a given agent ID.
+type mockCapabilityStore struct {
+	store.Store
+	agents *mockCapabilityAgentStore
+}
+
+func (m *mockCapabilityStore) Agents() store.AgentStore { return m.agents }
+
+type mockCapabilityAgentStore struct {
+	store.AgentStore
+	grants     map[uuid.UUID][]*model.AgentCapabilityView
+	errOnRead  error
+	notFound   bool
+	readCalled int
+	lastAgent  uuid.UUID
+}
+
+func (m *mockCapabilityAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapabilityView, error) {
+	m.readCalled++
+	m.lastAgent = agentID
+	if m.notFound {
+		return nil, store.ErrNotFound
+	}
+	if m.errOnRead != nil {
+		return nil, m.errOnRead
+	}
+	return m.grants[agentID], nil
+}
+
+func newCapAgentStore(grants map[uuid.UUID][]*model.AgentCapabilityView) *mockCapabilityAgentStore {
+	return &mockCapabilityAgentStore{grants: grants}
+}
+
+func newMockCapStore(grants map[uuid.UUID][]*model.AgentCapabilityView) *mockCapabilityStore {
+	agents := newCapAgentStore(grants)
+	return &mockCapabilityStore{agents: agents}
+}
+
+func TestValidateAgentHasCapabilities_AllPresent(t *testing.T) {
+	agentID := uuid.New()
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
+		agentID: {
+			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
+			{Name: "testing", Category: "testing", GrantedAt: fixedGrantedAt},
+		},
+	}
+	s := NewCapabilityService(newMockCapStore(grants), zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{"coding", "testing"})
+	assert.NoError(t, err)
+}
+
+func TestValidateAgentHasCapabilities_OneMissing(t *testing.T) {
+	agentID := uuid.New()
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
+		agentID: {
+			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
+		},
+	}
+	s := NewCapabilityService(newMockCapStore(grants), zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{"coding", "testing"})
+	assert.Error(t, err, "missing 'testing' must surface an error")
+
+	var svcErr *Error
+	if assert.True(t, errors.As(err, &svcErr), "must be a *Error") {
+		assert.Equal(t, "CAPABILITY_MISMATCH", string(svcErr.Code))
+		assert.Equal(t, 409, svcErr.Status)
+		// details must include the missing capability name
+		if assert.NotNil(t, svcErr.Details) {
+			found := false
+			for _, d := range svcErr.Details {
+				if d.Field == "required_capabilities" && strings.Contains(d.Message, "testing") {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "details should mention the missing 'testing' cap")
+		}
+	}
+}
+
+func TestValidateAgentHasCapabilities_EmptyList(t *testing.T) {
+	agentID := uuid.New()
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
+		agentID: {
+			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
+		},
+	}
+	// Track whether the store was consulted. It must NOT be
+	// consulted for an empty required list.
+	agents := newCapAgentStore(grants)
+	s := NewCapabilityService(&mockCapabilityStore{agents: agents}, zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, agents.readCalled, "store must not be read for empty required list")
+
+	// nil slice behaves the same way.
+	err = s.ValidateAgentHasCapabilities(context.Background(), agentID, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, agents.readCalled, "store must not be read for nil required list")
+}
+
+func TestValidateAgentHasCapabilities_AgentNotFound(t *testing.T) {
+	agentID := uuid.New()
+	agents := newCapAgentStore(nil)
+	agents.notFound = true
+	s := NewCapabilityService(&mockCapabilityStore{agents: agents}, zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{"coding"})
+	assert.Error(t, err)
+
+	var svcErr *Error
+	if assert.True(t, errors.As(err, &svcErr), "must be a *Error") {
+		assert.Equal(t, "NOT_FOUND", string(svcErr.Code))
+		assert.Equal(t, 404, svcErr.Status)
+	}
+}
+
+func TestValidateAgentHasCapabilities_StoreError(t *testing.T) {
+	agentID := uuid.New()
+	agents := newCapAgentStore(nil)
+	agents.errOnRead = errors.New("connection reset")
+	s := NewCapabilityService(&mockCapabilityStore{agents: agents}, zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{"coding"})
+	assert.Error(t, err)
+
+	// Store errors collapse to a generic INTERNAL 500 envelope so
+	// we don't leak driver-level error strings to clients.
+	var svcErr *Error
+	if assert.True(t, errors.As(err, &svcErr), "must be a *Error") {
+		assert.Equal(t, "INTERNAL", string(svcErr.Code))
+		assert.Equal(t, 500, svcErr.Status)
+	}
+}
+
+func TestValidateAgentHasCapabilities_PassesContext(t *testing.T) {
+	// Confirms the context.Context parameter is plumbed through
+	// to the store call (defensive — guards against future
+	// refactors accidentally dropping it).
+	agentID := uuid.New()
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
+		agentID: {{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt}},
+	}
+	agents := newCapAgentStore(grants)
+	s := NewCapabilityService(&mockCapabilityStore{agents: agents}, zap.NewNop())
+	err := s.ValidateAgentHasCapabilities(context.Background(), agentID, []string{"coding"})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, agents.readCalled)
+	assert.Equal(t, agentID, agents.lastAgent)
 }

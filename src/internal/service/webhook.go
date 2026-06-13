@@ -1,10 +1,6 @@
 package service
 
 import (
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
@@ -96,7 +92,13 @@ func (s *WebhookService) RegisterWebhook(req RegisterWebhookRequest) (*model.Web
 
 // ValidateWebhookSecret verifies a webhook secret using constant-time comparison
 func (s *WebhookService) ValidateWebhookSecret(webhookID, providedSecret string) (bool, *Error) {
-	webhook, err := s.store.Webhooks().GetByID(webhookID)
+	wid, err := uuid.Parse(webhookID)
+	if err != nil {
+		errs := &validation.Errors{}
+		errs.Add("webhook_id", "Invalid Webhook ID format")
+		return false, validationError(*errs)
+	}
+	webhook, err := s.store.Webhooks().GetByID(wid)
 	if err != nil {
 		return false, notFound("Webhook not found")
 	}

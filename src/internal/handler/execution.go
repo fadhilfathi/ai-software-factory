@@ -1,163 +1,289 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
+// ExecutionService is the consumer-side interface the handler
+// depends on. *service.ExecutionService implements it. The
+// interface is intentionally narrow (the four methods the HTTP
+// layer actually calls) so a hand-rolled mock in the test file
+// can stand in for the real service without a goroutine, a
+// WaitGroup, or env-var handling.
+type ExecutionService interface {
+	CreateExecution(ctx context.Context, taskID, agentID uuid.UUID) (*model.Execution, error)
+	GetExecution(ctx context.Context, id uuid.UUID) (*model.Execution, error)
+	ListExecutions(ctx context.Context, filter model.ExecutionFilter) (*model.ExecutionListResult, error)
+	UpdateExecutionStatus(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string) (*model.Execution, error)
+}
+
+// ExecutionHandler is the Sprint 4 (TASK-405) HTTP layer for
+// /v1/executions. It is a thin shell that:
+//   - parses JSON bodies and query params
+//   - calls the service
+//   - maps service errors to HTTP status codes
+//   - shapes the response envelope
+//
+// All routes require auth (the router wraps them with the
+// auth middleware).
 type ExecutionHandler struct {
-	svc *service.ExecutionService
+	svc ExecutionService
+	log *zap.Logger
 }
 
-func NewExecutionHandler(svc *service.ExecutionService) *ExecutionHandler {
-	return &ExecutionHandler{svc: svc}
+// NewExecutionHandler constructs the handler. The svc may be a
+// real *service.ExecutionService or a hand-rolled mock — both
+// satisfy the local interface.
+func NewExecutionHandler(svc ExecutionService, log *zap.Logger) *ExecutionHandler {
+	return &ExecutionHandler{svc: svc, log: log}
 }
 
-type createExecutionRequest struct {
-	TaskID  string `json:"task_id"`
-	AgentID string `json:"agent_id"`
+// ----------------------------------------------------------------------------
+// Request bodies
+// ----------------------------------------------------------------------------
+
+// createExecutionReq is the body for POST /v1/executions. Both
+// fields are required UUIDs.
+type createExecutionReq struct {
+	TaskID  string `json:"task_id"  binding:"required,uuid"`
+	AgentID string `json:"agent_id" binding:"required,uuid"`
 }
 
-type updateExecutionStatusRequest struct {
-	Status string `json:"status"`
+// patchExecutionReq is the body for PATCH /v1/executions/:id.
+// At least one of Status / ErrorMessage must be set; both are
+// optional and validated independently.
+type patchExecutionReq struct {
+	Status       *string `json:"status,omitempty"`
+	ErrorMessage *string `json:"error_message,omitempty"`
 }
 
-type executionResponse struct {
-	ExecutionID string  `json:"execution_id"`
-	TaskID      string  `json:"task_id"`
-	AgentID     string  `json:"agent_id"`
-	Status      string  `json:"status"`
-	StartedAt   *string `json:"started_at,omitempty"`
-	CompletedAt *string `json:"completed_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-}
+// ----------------------------------------------------------------------------
+// POST /v1/executions
+// ----------------------------------------------------------------------------
 
+// Create handles POST /v1/executions. Returns 201 with the
+// created execution (status=pending) on success, 400 on a bad
+// UUID, 404 if the task or agent does not exist, 500 otherwise.
 func (h *ExecutionHandler) Create(c *gin.Context) {
-	var req createExecutionRequest
+	var req createExecutionReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"code": "BAD_REQUEST", "message": err.Error()},
+		})
 		return
 	}
+	taskID, _ := uuid.Parse(req.TaskID)
+	agentID, _ := uuid.Parse(req.AgentID)
 
-	taskID, err := uuid.Parse(req.TaskID)
+	exec, err := h.svc.CreateExecution(c.Request.Context(), taskID, agentID)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid task_id")
+		h.mapError(c, err, "create execution")
 		return
 	}
-	agentID, err := uuid.Parse(req.AgentID)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid agent_id")
-		return
-	}
-
-	exec, svcErr := h.svc.CreateExecution(c.Request.Context(), taskID, agentID)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
-	}
-
-	writeJSON(c, http.StatusCreated, toExecutionResponse(exec))
+	c.JSON(http.StatusCreated, gin.H{"data": exec})
 }
 
+// ----------------------------------------------------------------------------
+// GET /v1/executions
+// ----------------------------------------------------------------------------
+
+// List handles GET /v1/executions. Query params:
+//   - task_id   (UUID, optional)
+//   - agent_id  (UUID, optional)
+//   - status    (string, optional; one of pending/running/completed/failed)
+//   - limit     (int,    optional; default 50, max 200)
+//   - cursor    (UUID,   optional; pass the NextCursor from a previous page)
+//
+// Returns 200 with an ExecutionListResult envelope. Unknown query
+// params are ignored (forward compatibility). Bad UUIDs in task_id,
+// agent_id, or cursor return 400.
 func (h *ExecutionHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	filter := model.ExecutionFilter{}
 
-	var taskID uuid.UUID
-	if t := c.Query("task_id"); t != "" {
-		taskID, _ = uuid.Parse(t)
+	if raw := c.Query("task_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{"code": "BAD_REQUEST", "message": "task_id must be a UUID"},
+			})
+			return
+		}
+		filter.TaskID = id
 	}
-	var agentID uuid.UUID
-	if a := c.Query("agent_id"); a != "" {
-		agentID, _ = uuid.Parse(a)
+	if raw := c.Query("agent_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{"code": "BAD_REQUEST", "message": "agent_id must be a UUID"},
+			})
+			return
+		}
+		filter.AgentID = id
+	}
+	if raw := c.Query("status"); raw != "" {
+		st := model.ExecutionStatus(raw)
+		if !model.IsValidExecutionStatus(st) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{
+					"code":    "INVALID_EXECUTION_STATUS",
+					"message": "status must be one of pending/running/completed/failed",
+				},
+			})
+			return
+		}
+		filter.Status = st
+	}
+	if raw := c.Query("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{"code": "BAD_REQUEST", "message": "limit must be a non-negative integer"},
+			})
+			return
+		}
+		filter.Limit = n
+	}
+	if raw := c.Query("cursor"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{"code": "BAD_REQUEST", "message": "cursor must be a UUID"},
+			})
+			return
+		}
+		filter.Cursor = id
 	}
 
-	execs, pagination, svcErr := h.svc.ListExecutions(c.Request.Context(), taskID, agentID, page, limit)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+	result, err := h.svc.ListExecutions(c.Request.Context(), filter)
+	if err != nil {
+		h.mapError(c, err, "list executions")
 		return
 	}
-
-	data := make([]executionResponse, len(execs))
-	for i, e := range execs {
-		data[i] = toExecutionResponse(e)
-	}
-
-	writeJSON(c, http.StatusOK, PaginatedResponse{
-		Data: data,
-		Pagination: Pagination{
-			Page:  pagination.Page,
-			Limit: pagination.Limit,
-			Total: pagination.Total,
-			Pages: pagination.Pages,
-		},
-	})
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
-func (h *ExecutionHandler) Get(c *gin.Context) {
+// ----------------------------------------------------------------------------
+// GET /v1/executions/:id
+// ----------------------------------------------------------------------------
+
+// GetByID handles GET /v1/executions/:id. Returns 200 with the
+// execution, 400 on a bad UUID, 404 on miss.
+func (h *ExecutionHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Execution ID")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"code": "BAD_REQUEST", "message": "id must be a UUID"},
+		})
 		return
 	}
-
-	exec, svcErr := h.svc.GetExecution(c.Request.Context(), id)
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
+	exec, err := h.svc.GetExecution(c.Request.Context(), id)
+	if err != nil {
+		h.mapError(c, err, "get execution")
 		return
 	}
-
-	writeJSON(c, http.StatusOK, toExecutionResponse(exec))
+	c.JSON(http.StatusOK, gin.H{"data": exec})
 }
 
-func (h *ExecutionHandler) UpdateStatus(c *gin.Context) {
+// ----------------------------------------------------------------------------
+// PATCH /v1/executions/:id
+// ----------------------------------------------------------------------------
+
+// Patch handles PATCH /v1/executions/:id. Body is patchExecutionReq.
+// Returns 200 with the updated execution, 400 on a bad body /
+// bad status, 404 on miss, 409 on a disallowed state transition.
+func (h *ExecutionHandler) Patch(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Execution ID")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"code": "BAD_REQUEST", "message": "id must be a UUID"},
+		})
 		return
 	}
-
-	var req updateExecutionStatusRequest
+	var req patchExecutionReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"code": "BAD_REQUEST", "message": err.Error()},
+		})
 		return
 	}
-
-	if req.Status == "" {
-		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Status is required")
+	if req.Status == nil && req.ErrorMessage == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"code":    "BAD_REQUEST",
+				"message": "at least one of status, error_message is required",
+			},
+		})
 		return
 	}
-
-	exec, svcErr := h.svc.UpdateExecutionStatus(c.Request.Context(), id, model.ExecutionStatus(req.Status))
-	if svcErr != nil {
-		writeServiceError(c, svcErr)
-		return
+	var newStatus model.ExecutionStatus
+	if req.Status != nil {
+		newStatus = model.ExecutionStatus(*req.Status)
+		if !model.IsValidExecutionStatus(newStatus) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{
+					"code":    "INVALID_EXECUTION_STATUS",
+					"message": "status must be one of pending/running/completed/failed",
+				},
+			})
+			return
+		}
 	}
 
-	writeJSON(c, http.StatusOK, toExecutionResponse(exec))
+	updated, err := h.svc.UpdateExecutionStatus(c.Request.Context(), id, newStatus, req.ErrorMessage)
+	if err != nil {
+		// 404 is mapped first; 409 INVALID_STATE_TRANSITION is
+		// mapped second; everything else is 500.
+		h.mapError(c, err, "update execution")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": updated})
 }
 
-func toExecutionResponse(e *model.Execution) executionResponse {
-	resp := executionResponse{
-		ExecutionID: e.ExecutionID.String(),
-		TaskID:      e.TaskID.String(),
-		AgentID:     e.AgentID.String(),
-		Status:      string(e.Status),
-		CreatedAt:   e.CreatedAt.Format(time.RFC3339),
+// ----------------------------------------------------------------------------
+// Error mapping
+// ----------------------------------------------------------------------------
+
+// mapError centralises the service-error → HTTP-status translation.
+// It is shared by every method so the error envelope stays
+// consistent. We deliberately do NOT leak the wrapped error
+// message to the client; the error_code is the public API.
+func (h *ExecutionHandler) mapError(c *gin.Context, err error, op string) {
+	switch {
+	case errors.Is(err, service.ErrTaskNotFound):
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{"code": "TASK_NOT_FOUND", "message": "the referenced task does not exist"},
+		})
+		return
+	case errors.Is(err, service.ErrAgentNotFound):
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{"code": "AGENT_NOT_FOUND", "message": "the referenced agent does not exist"},
+		})
+		return
+	case errors.Is(err, service.ErrExecutionNotFound):
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{"code": "EXECUTION_NOT_FOUND", "message": "the requested execution does not exist"},
+		})
+		return
+	case errors.Is(err, service.ErrInvalidStateTransition):
+		c.JSON(http.StatusConflict, gin.H{
+			"error": gin.H{
+				"code":    "INVALID_STATE_TRANSITION",
+				"message": "the requested status transition is not allowed for this execution",
+			},
+		})
+		return
 	}
-	if e.StartedAt != nil {
-		formatted := e.StartedAt.Format(time.RFC3339)
-		resp.StartedAt = &formatted
-	}
-	if e.CompletedAt != nil {
-		formatted := e.CompletedAt.Format(time.RFC3339)
-		resp.CompletedAt = &formatted
-	}
-	return resp
+	h.log.Error(op, zap.Error(err))
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": gin.H{"code": "INTERNAL", "message": "internal server error"},
+	})
 }

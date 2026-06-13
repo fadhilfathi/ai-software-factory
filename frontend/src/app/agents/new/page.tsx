@@ -1,214 +1,205 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { useCreateAgent } from "@/lib/hooks";
-import { Input } from "@/components/form/Input";
-import { Select } from "@/components/form/Select";
-import { Checkbox } from "@/components/form/Checkbox";
-import { SpinnerButton } from "@/components/ui/Spinner";
-import { ErrorBlock } from "@/components/ui/ErrorBlock";
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 
-const ROLE_DETAILS = [
-  { value: "pm", label: "Project Manager", description: "Strategic planning and task decomposition.", icon: "📈" },
-  { value: "architect", label: "Architect", description: "System design and technical blueprints.", icon: "📐" },
-  { value: "developer", label: "Developer", description: "Code implementation and problem solving.", icon: "💻" },
-  { value: "reviewer", label: "Reviewer", description: "Quality assurance and security audits.", icon: "🔍" },
-  { value: "qa", label: "QA Engineer", description: "Automated testing and bug hunting.", icon: "🧪" },
-  { value: "devops", label: "DevOps", description: "Deployment and infrastructure management.", icon: "🚀" },
-];
+import { useCreateAgent } from "@/lib/hooks"
+import { useProjectFilters } from "@/hooks/useProjectFilters"
+import type { AgentMetadata, CreateAgentPayload } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
-const CAPABILITY_OPTIONS = [
-  "architecture",
-  "coding",
-  "testing",
-  "security",
-  "documentation",
-  "devops",
-  "project_management",
-  "data_engineering",
-];
+import { PageHeader } from "@/components/layout/PageHeader"
+import { Input } from "@/components/form/Input"
+import { Textarea } from "@/components/form/Textarea"
+import { SpinnerButton } from "@/components/ui/Spinner"
+import { ErrorBlock } from "@/components/ui/ErrorBlock"
+import { ProjectPickerGate } from "@/components/agents/ProjectPickerGate"
+import { CapabilityMultiSelect } from "@/components/agents/CapabilityMultiSelect"
 
 export default function NewAgentPage() {
-  const router = useRouter();
-  const createAgent = useCreateAgent();
+  return (
+    <ProjectPickerGate>
+      <NewAgentForm />
+    </ProjectPickerGate>
+  )
+}
 
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("developer");
-  const [type, setType] = useState("LLM");
-  const [model, setModel] = useState("gpt-4-turbo");
-  const [provider, setProvider] = useState("openai");
-  const [capabilities, setCapabilities] = useState<string[]>(["coding"]);
-  const [error, setError] = useState<string | null>(null);
+function NewAgentForm() {
+  const router = useRouter()
+  const { projectId } = useProjectFilters()
+  const createAgent = useCreateAgent()
 
-  const nameError = name.length > 0 && name.trim().length < 2 ? "Name must be at least 2 characters" : null;
+  const [name, setName] = useState("")
+  const [role, setRole] = useState("")
+  const [capabilities, setCapabilities] = useState<string[]>([])
+  const [metadataOpen, setMetadataOpen] = useState(false)
+  const [model, setModel] = useState("")
+  const [provider, setProvider] = useState("")
+  const [type, setType] = useState("")
+  const [description, setDescription] = useState("")
 
-  const toggleCapability = (cap: string) => {
-    setCapabilities((prev) =>
-      prev.includes(cap) ? prev.filter((c) => c !== cap) : [...prev, cap],
-    );
-  };
+  const metadata = useMemo<AgentMetadata>(() => {
+    const m: AgentMetadata = {}
+    if (model.trim()) m.model = model.trim()
+    if (provider.trim()) m.provider = provider.trim()
+    if (type.trim()) m.type = type.trim()
+    if (description.trim()) m.description = description.trim()
+    return m
+  }, [model, provider, type, description])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setError(null);
-    try {
-      const result = await createAgent.mutateAsync({
-        name: name.trim(),
-        role,
-        type: type || undefined,
-        model: model || undefined,
-        provider: provider || undefined,
-        capabilities: capabilities.length > 0 ? capabilities : undefined,
-      });
-      router.push(`/agents/${result.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to spawn agent");
+  const canSubmit =
+    name.trim().length > 0 &&
+    role.trim().length > 0 &&
+    capabilities.length > 0 &&
+    !!projectId
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canSubmit || !projectId) return
+    const payload: CreateAgentPayload = {
+      project_id: projectId,
+      name: name.trim(),
+      role: role.trim(),
+      capabilities,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     }
-  };
+    const agent = await createAgent.mutateAsync(payload)
+    router.push(`/agents/${agent.id}`)
+  }
 
   return (
-    <div className="mx-auto max-w-3xl py-8">
-      <div className="mb-8">
-        <PageHeader
-          title="Spawn New Agent"
-          subtitle="Deploy a specialized AI agent to the factory workforce."
-          actions={
-            <button
-              onClick={() => router.push("/agents")}
-              className="rounded-lg border border-gray-800 px-4 py-2 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-colors"
-              type="button"
-            >
-              Cancel
-            </button>
-          }
-        />
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <PageHeader
+        title="New agent"
+        description="Register a new agent in the current project."
+      />
 
-      <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-8 shadow-2xl backdrop-blur-sm">
-        {error && <ErrorBlock message={error} className="mb-6" />}
+      {createAgent.isError ? (
+        <ErrorBlock error={createAgent.error} />
+      ) : null}
 
-        <form onSubmit={handleSubmit} className="space-y-10">
-          {/* Section 1: Role Selection */}
-          <div className="space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-500">1. Select Core Role</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {ROLE_DETAILS.map((option) => (
-                <label
-                  key={option.value}
-                  className={`relative flex cursor-pointer flex-col rounded-xl border p-4 transition-all hover:bg-gray-900/40 ${
-                    role === option.value
-                      ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500"
-                      : "border-gray-800 bg-gray-900/20"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="role"
-                    value={option.value}
-                    checked={role === option.value}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="sr-only"
-                  />
-                  <div className="text-xl mb-2">{option.icon}</div>
-                  <span className={`text-sm font-bold ${role === option.value ? "text-emerald-400" : "text-gray-200"}`}>
-                    {option.label}
-                  </span>
-                  <span className="mt-1 text-[10px] leading-relaxed text-gray-500">
-                    {option.description}
-                  </span>
-                </label>
-              ))}
+      <form onSubmit={onSubmit} className="space-y-5">
+        <FormRow label="Name" required hint="1-100 characters, must be unique within the project.">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Backend Architect"
+            maxLength={100}
+            required
+          />
+        </FormRow>
+
+        <FormRow label="Role" required hint="Free-form role label (e.g. architect, developer, qa).">
+          <Input
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="e.g. architect"
+            required
+          />
+        </FormRow>
+
+        <FormRow
+          label="Capabilities"
+          required
+          hint="At least one. Capabilities must exist in the catalog (useCapabilities)."
+        >
+          <CapabilityMultiSelect
+            value={capabilities}
+            onChange={setCapabilities}
+          />
+        </FormRow>
+
+        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setMetadataOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200"
+            aria-expanded={metadataOpen}
+          >
+            <span>Metadata (optional)</span>
+            <span aria-hidden>{metadataOpen ? "▴" : "▾"}</span>
+          </button>
+          {metadataOpen ? (
+            <div className="space-y-4 border-t border-slate-200 p-4 dark:border-slate-800">
+              <FormRow label="Model" hint="e.g. gpt-4o, claude-3.5-sonnet">
+                <Input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="model name"
+                />
+              </FormRow>
+              <FormRow label="Provider" hint="e.g. openai, anthropic, internal">
+                <Input
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  placeholder="provider"
+                />
+              </FormRow>
+              <FormRow label="Type" hint="Free-form subtype label">
+                <Input
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  placeholder="e.g. backend, frontend, research"
+                />
+              </FormRow>
+              <FormRow label="Description" hint="Short human-readable description">
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="What does this agent do?"
+                />
+              </FormRow>
             </div>
-          </div>
+          ) : null}
+        </div>
 
-          {/* Section 2: Configuration */}
-          <div className="space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-500">2. Technical Configuration</h3>
-            <div className="grid gap-6 sm:grid-cols-2">
-              <Input
-                label="Agent Display Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Senior Gopher"
-                required
-                error={nameError}
-                className="bg-gray-900/50"
-              />
-
-              <Input
-                label="Model Engine"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="e.g., gpt-4-turbo"
-                className="bg-gray-900/50"
-              />
-
-              <Select
-                label="Infrastructure Provider"
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                options={[
-                  { value: "openai", label: "OpenAI" },
-                  { value: "anthropic", label: "Anthropic" },
-                  { value: "google", label: "Google Vertex" },
-                  { value: "local", label: "Local / Self-hosted" },
-                ]}
-                className="bg-gray-900/50"
-              />
-
-              <Input
-                label="Agent Type"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                placeholder="e.g., LLM, Codex, Agentic"
-                className="bg-gray-900/50"
-              />
-            </div>
-          </div>
-
-          {/* Section 3: Capabilities */}
-          <div className="space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-500">3. Functional Capabilities</h3>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {CAPABILITY_OPTIONS.map((cap) => (
-                <button
-                  key={cap}
-                  type="button"
-                  onClick={() => toggleCapability(cap)}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-2 rounded-xl border p-4 transition-all text-center",
-                    capabilities.includes(cap)
-                      ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
-                      : "border-gray-800 bg-gray-900/20 text-gray-500 hover:border-gray-700"
-                  )}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-tighter">
-                    {cap.replace(/_/g, " ")}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-gray-800 pt-8">
-            <p className="text-[10px] text-gray-500 italic max-w-xs">
-              * Spawning an agent initiates a compute instance. Billing begins immediately upon successful deployment.
-            </p>
-            <SpinnerButton
-              type="submit"
-              loading={createAgent.isPending}
-              loadingText="Spawning..."
-              disabled={!name.trim() || !!nameError}
-              className="rounded-lg bg-emerald-500 px-10 py-3 text-sm font-bold text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
-            >
-              Confirm Deployment
-            </SpinnerButton>
-          </div>
-        </form>
-      </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
+          >
+            Cancel
+          </button>
+          <SpinnerButton
+            type="submit"
+            loading={createAgent.isPending}
+            disabled={!canSubmit}
+          >
+            Create agent
+          </SpinnerButton>
+        </div>
+      </form>
     </div>
-  );
+  )
+}
+
+function FormRow({
+  label,
+  hint,
+  required,
+  children,
+}: {
+  label: string
+  hint?: string
+  required?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1">
+      <label
+        className={cn(
+          "block text-sm font-medium text-slate-700 dark:text-slate-200",
+        )}
+      >
+        {label}
+        {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
+      </label>
+      {children}
+      {hint ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+      ) : null}
+    </div>
+  )
 }

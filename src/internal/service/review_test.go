@@ -21,10 +21,13 @@ type MockStore struct {
 func (m *MockStore) Users() store.UserStore           { return m.Called().Get(0).(store.UserStore) }
 func (m *MockStore) Projects() store.ProjectStore     { return m.Called().Get(0).(store.ProjectStore) }
 func (m *MockStore) Agents() store.AgentStore         { return m.Called().Get(0).(store.AgentStore) }
-func (m *MockStore) AgentRuns() store.AgentRunStore   { return m.Called().Get(0).(store.AgentRunStore) }
+func (m *MockStore) Capabilities() store.CapabilityStore { return m.Called().Get(0).(store.CapabilityStore) }
 func (m *MockStore) Executions() store.ExecutionStore { return m.Called().Get(0).(store.ExecutionStore) }
 func (m *MockStore) Deliverables() store.DeliverableStore {
 	return m.Called().Get(0).(store.DeliverableStore)
+}
+func (m *MockStore) DeliverableVersions() store.DeliverableVersionStore {
+	return m.Called().Get(0).(store.DeliverableVersionStore)
 }
 func (m *MockStore) Tasks() store.TaskStore           { return m.Called().Get(0).(store.TaskStore) }
 func (m *MockStore) Code() store.CodeStore            { return m.Called().Get(0).(store.CodeStore) }
@@ -37,6 +40,23 @@ func (m *MockStore) AuditLogs() store.AuditLogStore {
 	return m.Called().Get(0).(store.AuditLogStore)
 }
 func (m *MockStore) Tokens() store.TokenStore { return m.Called().Get(0).(store.TokenStore) }
+// TASK-404: append-only assignment_events store. The MockStore
+// returns whatever AssignmentEventStore the test wires in via
+// .On("AssignmentEvents", ...) — typically a hand-rolled
+// in-memory fake for the assignment test file.
+func (m *MockStore) AssignmentEvents() store.AssignmentEventStore {
+	return m.Called().Get(0).(store.AssignmentEventStore)
+}
+// TASK-404: current-state assignments store. Same mock pattern.
+func (m *MockStore) Assignments() store.AssignmentStore {
+	return m.Called().Get(0).(store.AssignmentStore)
+}
+// TASK-404: WithTx wrapper. The MockStore accepts a closure and
+// calls it with a nil Tx (the test uses the real in-memory store
+// for end-to-end coverage, not this mock).
+func (m *MockStore) WithTx(ctx context.Context, fn func(store.Tx) error) error {
+	return m.Called(ctx, fn).Get(0).(error)
+}
 
 // MockProjectStore
 type MockProjectStore struct {
@@ -152,7 +172,7 @@ func TestReviewService_CreateReview(t *testing.T) {
 		review, err := svc.CreateReview(req)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, 404, err.StatusCode)
+		assert.Equal(t, 404, err.Status)
 		assert.Nil(t, review)
 	})
 
@@ -167,7 +187,7 @@ func TestReviewService_CreateReview(t *testing.T) {
 		review, err := svc.CreateReview(req)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, 400, err.StatusCode)
+		assert.Equal(t, 400, err.Status)
 		assert.Nil(t, review)
 	})
 }

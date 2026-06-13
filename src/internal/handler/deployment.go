@@ -100,7 +100,7 @@ func (h *DeploymentHandler) Rollback(c *gin.Context) {
 
 func toDeploymentResponse(d *model.Deployment) deploymentResponse {
 	resp := deploymentResponse{
-		ID:            d.ID,
+		ID:            d.ID.String(),
 		Status:        string(d.Status),
 		Environment:   string(d.Environment),
 		URL:           d.URL,

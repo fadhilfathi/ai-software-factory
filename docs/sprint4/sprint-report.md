@@ -1,3 +1,4 @@
+<!-- SUPERSEDED — see docs/sprint4/sprint-summary.md (Sprint 4) for the current summary. This file is a Sprint 3 record (TASK-301..314) that ended up in the Sprint 4 docs directory. Kept for historical reference. -->
 # Sprint 4 Completion Report — Agent Orchestration Engine
 
 ## Overview

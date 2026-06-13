@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -23,13 +22,12 @@ const (
 )
 
 // isPublicPath is a function that returns true when a request should skip auth.
-type isPublicPath func(c *gin.Context) bool
 
 // Auth provides JWT and API Key authentication.
 // Pass publicRoutes to exempt specific routes (e.g. login, register, healthz).
-func Auth(authService service.AuthService, publicPaths isPublicPath) gin.HandlerFunc {
+func Auth(authService service.AuthService, publicPaths map[string]bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if publicPaths(c) {
+		if isPublic(c, publicPaths) {
 			c.Next()
 			return
 		}
@@ -58,9 +56,26 @@ func Auth(authService service.AuthService, publicPaths isPublicPath) gin.Handler
 		}
 
 		// API key pattern: ak_...
+		// F-002 (Sprint 4 security review): replaced the previous
+		// prefix-only bypass. The token is now hashed (sha256 of the
+		// post-`ak_` part) and looked up against the APIKeyStore that
+		// the auth service holds. On any failure (unknown key, revoked
+		// key, expired key, malformed prefix) the request is rejected
+		// with 401. The raw token never touches the context — only
+		// the resolved UserID and Role.
 		if strings.HasPrefix(token, "ak_") {
-			c.Set(UserIDKey, "api_user")
-			c.Set(RoleKey, "api_user")
+			result, apiErr := authService.ValidateAPIKey(c.Request.Context(), token)
+			if apiErr != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": gin.H{
+						"code":    apiErr.Code,
+						"message": apiErr.Message,
+					},
+				})
+				return
+			}
+			c.Set(UserIDKey, result.UserID.String())
+			c.Set(RoleKey, result.Role)
 			c.Next()
 			return
 		}
@@ -284,4 +299,23 @@ func min(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// isPublic returns true when the request path is in the publicPaths set.
+// Supports exact match and prefix match (for paths like /v1/auth/login and
+// /v1/auth/login/callback).
+func isPublic(c *gin.Context, publicPaths map[string]bool) bool {
+	if publicPaths == nil {
+		return false
+	}
+	if publicPaths[c.Request.URL.Path] {
+		return true
+	}
+	// prefix match
+	for p := range publicPaths {
+		if strings.HasPrefix(c.Request.URL.Path, p) {
+			return true
+		}
+	}
+	return false
 }

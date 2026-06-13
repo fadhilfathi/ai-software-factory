@@ -8,9 +8,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Format a relative time string (e.g. "2h ago").
+ * Format a relative time string (e.g. "2h ago"). Returns "—" for
+ * null/undefined so call sites can pass optional timestamps without
+ * a null check.
  */
-export function timeAgo(date: Date | string | number): string {
+export function timeAgo(date: Date | string | number | null | undefined): string {
+  if (!date) return "—";
   const now = new Date();
   const then = typeof date === "string" || typeof date === "number" ? new Date(date) : date;
   const seconds = Math.floor((now.getTime() - then.getTime()) / 1000);
@@ -52,4 +55,28 @@ export function truncate(str: string, max: number): string {
  */
 export function optimisticId(): string {
   return `opt_${crypto.randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * Format a fraction (0-1) as a percent string, e.g. 0.73 → "73%".
+ */
+export function formatPercent(value: number, fractionDigits = 0): string {
+  if (!Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(fractionDigits)}%`;
+}
+
+/**
+ * Format an uptime duration (seconds) as a compact human label,
+ * e.g. 90061 → "1d 1h", 3661 → "1h 1m", 60 → "1m".
+ */
+export function formatUptime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const s = Math.floor(seconds);
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${s}s`;
 }

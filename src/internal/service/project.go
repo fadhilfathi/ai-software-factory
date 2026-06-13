@@ -61,14 +61,14 @@ func (s *ProjectService) CreateProject(ctx context.Context, req CreateProjectReq
 
 	// Assign initial agents if provided
 	for _, agentID := range req.Agents {
-		agent, err := s.store.Agents().GetByID(agentID)
+		agent, err := s.store.Agents().GetByID(context.Background(), agentID)
 		if err != nil {
 			s.log.Warn("failed to find initial agent for assignment", zap.String("agent_id", agentID.String()))
 			continue
 		}
 		agent.ProjectID = project.ID
 		agent.UpdatedAt = now
-		if err := s.store.Agents().Update(agent); err != nil {
+		if err := s.store.Agents().Update(context.Background(), agent); err != nil {
 			s.log.Error("failed to assign initial agent to project", zap.Error(err), zap.String("agent_id", agentID.String()))
 		}
 	}

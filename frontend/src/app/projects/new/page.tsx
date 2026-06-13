@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useCreateProject } from "@/lib/hooks";
+import type { Project } from "@/lib/types";
 import { Input } from "@/components/form/Input";
 import { Textarea } from "@/components/form/Textarea";
 import { Select } from "@/components/form/Select";
@@ -37,7 +38,7 @@ export default function NewProjectPage() {
         name: name.trim(),
         description: description.trim() || undefined,
         template: template || undefined,
-      });
+      } as Partial<Omit<Project, "id" | "created_at" | "updated_at">> & { name: string });
       router.push(`/projects/${result.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create project");

@@ -89,7 +89,14 @@ export default function ProjectDetailPage({
           <span className="flex items-center gap-3">
             <span className="text-gray-500 font-mono text-xs">{project.id.toUpperCase()}</span>
             <span className="h-4 w-px bg-gray-800" />
-            <ProjectStatusBadge status={project.status} />
+            {/* Project.status is not in the Sprint 1-3 spec; we infer
+                an "active" / "archived" badge from the updated_at
+                recency instead so the header still gives a status cue. */}
+            {(() => {
+              const updatedAt = project.updated_at ? new Date(project.updated_at).getTime() : 0;
+              const isArchived = updatedAt > 0 && Date.now() - updatedAt > 30 * 24 * 60 * 60 * 1000;
+              return <ProjectStatusBadge status={isArchived ? "archived" : "active"} />;
+            })()}
           </span>
         }
         actions={
@@ -210,27 +217,34 @@ export default function ProjectDetailPage({
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">Project Health</h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-bold">
-                  <span className="text-gray-400">Completion</span>
-                  <span className="text-emerald-400">{project.progress ?? 0}%</span>
+                  <span className="text-gray-400">Tasks tracked</span>
+                  {/* `progress` is not in the Sprint 1-3 Project type;
+                      show the count of tasks in this project instead. */}
+                  <span className="text-emerald-400">
+                    {(project as { task_count?: number }).task_count ?? "—"}
+                  </span>
                 </div>
-                <ProgressBar value={project.progress ?? 0} size="md" />
+                <ProgressBar
+                  value={Math.min(100, ((project as { task_count?: number }).task_count ?? 0))}
+                  size="md"
+                />
               </div>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-gray-800/50">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">Metadata</h3>
               <div className="space-y-3">
-                {project.template && (
+                {(project as { template?: string }).template && (
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Architecture</span>
-                    <span className="text-sm text-gray-300 font-medium">{project.template}</span>
+                    <span className="text-sm text-gray-300 font-medium">{(project as { template?: string }).template}</span>
                   </div>
                 )}
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">Active Agents</span>
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-sm text-gray-300 font-medium">{project.active_agents ?? 0} Agents Online</span>
+                    <span className="text-sm text-gray-300 font-medium">{(project as { active_agents?: number }).active_agents ?? 0} Agents Online</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">

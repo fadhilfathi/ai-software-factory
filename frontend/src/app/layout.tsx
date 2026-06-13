@@ -18,6 +18,14 @@ export const metadata: Metadata = {
   description: "Full-stack AI-powered software development platform",
 };
 
+// `useSearchParams` is called by `useProjectFilters` (and therefore
+// every page that goes through ProjectPickerGate). The Next.js
+// static-prerender pass requires a Suspense boundary or a
+// `force-dynamic` opt-out for any client component that calls it.
+// Whole-app dynamic rendering is the simpler choice for this
+// dashboard — there is no static-export goal here.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{

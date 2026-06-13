@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,7 @@ func TestWebhookEventConstants(t *testing.T) {
 func TestWebhookStruct(t *testing.T) {
 	now := time.Now().UTC()
 	webhook := Webhook{
-		ID:        "webhook-123",
+		ID:        uuid.MustParse("00000000-0000-0000-0000-000000000040"),
 		URL:       "https://example.com/webhook",
 		Events:    []WebhookEvent{EventProjectCreated, EventTaskCreated, EventCodeGenerated},
 		Secret:    "secret-key-123",
@@ -31,7 +32,7 @@ func TestWebhookStruct(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	assert.Equal(t, "webhook-123", webhook.ID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000040"), webhook.ID)
 	assert.Equal(t, "https://example.com/webhook", webhook.URL)
 	assert.Len(t, webhook.Events, 3)
 	assert.Equal(t, EventProjectCreated, webhook.Events[0])
@@ -45,7 +46,7 @@ func TestWebhookStruct(t *testing.T) {
 
 func TestWebhookWithEmptySecret(t *testing.T) {
 	webhook := Webhook{
-		ID:     "webhook-no-secret",
+		ID:     uuid.MustParse("00000000-0000-0000-0000-000000000041"),
 		URL:    "https://example.com/webhook",
 		Events: []WebhookEvent{EventTaskUpdated},
 		Active: false,
@@ -58,8 +59,8 @@ func TestWebhookWithEmptySecret(t *testing.T) {
 func TestWebhookDeliveryStruct(t *testing.T) {
 	now := time.Now().UTC()
 	delivery := WebhookDelivery{
-		ID:          "delivery-123",
-		WebhookID:   "webhook-123",
+		ID:          uuid.MustParse("00000000-0000-0000-0000-000000000042"),
+		WebhookID:   uuid.MustParse("00000000-0000-0000-0000-000000000040"),
 		Event:       "task.created",
 		Payload:     `{"task_id": "task-1", "title": "New Task"}`,
 		Status:      "success",
@@ -67,8 +68,8 @@ func TestWebhookDeliveryStruct(t *testing.T) {
 		AttemptedAt: now,
 	}
 
-	assert.Equal(t, "delivery-123", delivery.ID)
-	assert.Equal(t, "webhook-123", delivery.WebhookID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000042"), delivery.ID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000040"), delivery.WebhookID)
 	assert.Equal(t, "task.created", delivery.Event)
 	assert.Equal(t, `{"task_id": "task-1", "title": "New Task"}`, delivery.Payload)
 	assert.Equal(t, "success", delivery.Status)

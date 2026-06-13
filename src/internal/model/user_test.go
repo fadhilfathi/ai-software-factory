@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,9 +17,9 @@ func TestRoleConstants(t *testing.T) {
 func TestUserStructFields(t *testing.T) {
 	now := time.Now().UTC()
 	user := User{
-		ID:        "user-123",
-		Email:     "test@example.com",
-		PasswordHash:  "hashed-password",
+		ID:           uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Email:        "test@example.com",
+		PasswordHash: "hashed-password",
 		Name:      "Test User",
 		Role:      RoleAdmin,
 		Teams:     []string{"team-1", "team-2"},
@@ -27,7 +28,7 @@ func TestUserStructFields(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	assert.Equal(t, "user-123", user.ID)
+	assert.Equal(t, uuid.MustParse("11111111-1111-1111-1111-111111111111"), user.ID)
 	assert.Equal(t, "test@example.com", user.Email)
 	assert.Equal(t, "hashed-password", user.PasswordHash)
 	assert.Equal(t, "Test User", user.Name)
@@ -42,8 +43,8 @@ func TestUserJSONExcludesPassword(t *testing.T) {
 	// The Password field has json:"-" tag, so it should not be serialized
 	// This is a compile-time check - if the tag is missing, the test would need JSON marshaling
 	user := User{
-		ID:       "user-1",
-		Email:    "test@test.com",
+		ID:           uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		Email:        "test@test.com",
 		PasswordHash: "secret",
 		Name:     "Test",
 		Role:     RoleMember,

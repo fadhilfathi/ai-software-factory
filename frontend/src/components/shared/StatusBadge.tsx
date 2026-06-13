@@ -1,11 +1,12 @@
 import { Badge } from "@/components/ui/Badge";
 import type { BadgeColor } from "@/components/ui/Badge";
-import type { ProjectStatus, TaskStatus, AgentStatus_ } from "@/lib/types";
+import type { ProjectStatus, LegacyTaskStatus as TaskStatus, AgentStatus_ } from "@/lib/types";
 
 /* ─── Project Status ─── */
 
 const PROJECT_STATUS_MAP: Record<ProjectStatus, { label: string; color: BadgeColor }> = {
   initializing: { label: "Initializing", color: "blue" },
+  active: { label: "Active", color: "emerald" },
   in_progress: { label: "In Progress", color: "emerald" },
   completed: { label: "Completed", color: "violet" },
   archived: { label: "Archived", color: "gray" },
