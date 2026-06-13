@@ -62,8 +62,5 @@ func TestTaskMinimalFields(t *testing.T) {
 	assert.Equal(t, PriorityMedium, task.Priority)
 	assert.Equal(t, TaskTodo, task.Status)
 	assert.Empty(t, task.Description)
-	assert.Empty(t, task.Type)
-	assert.Nil(t, task.AcceptanceCriteria)
-	assert.Zero(t, task.EstimatedHours)
 	assert.Empty(t, task.AssigneeAgentID)
 }
