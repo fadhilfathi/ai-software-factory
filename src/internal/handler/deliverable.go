@@ -174,7 +174,7 @@ func (h *DeliverableHandler) Create(c *gin.Context) {
 		writeServiceError(c, svcErr)
 		return
 	}
-	writeJSON(c, http.StatusCreated, toDeliverableResponse(d))
+	writeJSON(c, http.StatusCreated, gin.H{"data": toDeliverableResponse(d)})
 }
 
 // ----------------------------------------------------------------------------

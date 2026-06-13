@@ -157,10 +157,12 @@ func TestAgentHandler_Create_Success(t *testing.T) {
 	m.AssertExpectations(t)
 	var resp map[string]interface{}
 	requireUnmarshal(t, w, &resp)
-	assert.Equal(t, createdID.String(), resp["id"])
-	assert.Equal(t, "alpha", resp["name"])
-	assert.Equal(t, float64(1), resp["version"])
-	assert.Equal(t, "initializing", resp["status"])
+	data, ok := resp["data"].(map[string]interface{})
+	assert.True(t, ok, "expected top-level 'data' envelope, got body=%s", w.Body.String())
+	assert.Equal(t, createdID.String(), data["id"])
+	assert.Equal(t, "alpha", data["name"])
+	assert.Equal(t, float64(1), data["version"])
+	assert.Equal(t, "initializing", data["status"])
 }
 
 func TestAgentHandler_Create_ValidationError(t *testing.T) {
@@ -362,6 +364,79 @@ func TestAgentHandler_Delete_MissingProjectHeader(t *testing.T) {
 
 	w := doRequest(r, http.MethodDelete, "/v1/agents/"+id.String(), "", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+// ---- D7 envelope consistency (Sprint 6, TASK-427) ------------------
+
+func TestAgentHandler_Create_DataEnvelope(t *testing.T) {
+	r, m := newTestRouter(t)
+	projectID := uuid.New()
+	createdID := uuid.New()
+
+	m.On("CreateAgent", mock.Anything, mock.Anything).Return(&model.Agent{
+		ID: createdID, ProjectID: projectID, Name: "alpha", Role: "developer",
+		Status: model.AgentInitializing, Capabilities: []string{"coding"},
+		Version: 1, CreatedAt: parseTime("2026-06-12T10:00:00Z"),
+		UpdatedAt: parseTime("2026-06-12T10:00:00Z"),
+	}, (*service.Error)(nil))
+
+	body := map[string]interface{}{"name": "alpha", "role": "developer", "capabilities": []string{"coding"}}
+	w := doRequest(r, http.MethodPost, "/v1/agents", projectID.String(), body)
+	assert.Equal(t, http.StatusCreated, w.Code)
+	m.AssertExpectations(t)
+
+	var resp map[string]interface{}
+	requireUnmarshal(t, w, &resp)
+	data, ok := resp["data"].(map[string]interface{})
+	assert.True(t, ok, "expected top-level 'data' envelope, got body=%s", w.Body.String())
+	assert.Equal(t, createdID.String(), data["id"])
+}
+
+func TestAgentHandler_Get_DataEnvelope(t *testing.T) {
+	r, m := newTestRouter(t)
+	id := uuid.New()
+	projectID := uuid.New()
+
+	m.On("GetAgent", mock.Anything, id, projectID).Return(&model.Agent{
+		ID: id, ProjectID: projectID, Name: "alpha", Role: "developer",
+		Status: model.AgentActive, Capabilities: []string{"coding"},
+		Version: 1, CreatedAt: parseTime("2026-06-12T10:00:00Z"),
+		UpdatedAt: parseTime("2026-06-12T10:00:00Z"),
+	}, (*service.Error)(nil))
+
+	w := doRequest(r, http.MethodGet, "/v1/agents/"+id.String(), projectID.String(), nil)
+	assert.Equal(t, http.StatusOK, w.Code)
+	m.AssertExpectations(t)
+
+	var resp map[string]interface{}
+	requireUnmarshal(t, w, &resp)
+	data, ok := resp["data"].(map[string]interface{})
+	assert.True(t, ok, "expected top-level 'data' envelope, got body=%s", w.Body.String())
+	assert.Equal(t, id.String(), data["id"])
+}
+
+func TestAgentHandler_Update_DataEnvelope(t *testing.T) {
+	r, m := newTestRouter(t)
+	id := uuid.New()
+	projectID := uuid.New()
+
+	m.On("UpdateAgent", mock.Anything, id, projectID, mock.Anything).Return(&model.Agent{
+		ID: id, ProjectID: projectID, Name: "alpha", Role: "qa",
+		Status: model.AgentActive, Capabilities: []string{"testing"},
+		Version: 2, CreatedAt: parseTime("2026-06-12T10:00:00Z"),
+		UpdatedAt: parseTime("2026-06-12T11:00:00Z"),
+	}, (*service.Error)(nil))
+
+	body := map[string]interface{}{"role": "qa", "version": 1}
+	w := doRequest(r, http.MethodPut, "/v1/agents/"+id.String(), projectID.String(), body)
+	assert.Equal(t, http.StatusOK, w.Code)
+	m.AssertExpectations(t)
+
+	var resp map[string]interface{}
+	requireUnmarshal(t, w, &resp)
+	data, ok := resp["data"].(map[string]interface{})
+	assert.True(t, ok, "expected top-level 'data' envelope, got body=%s", w.Body.String())
+	assert.Equal(t, id.String(), data["id"])
+	assert.Equal(t, "qa", data["role"])
 }
 // ---- helper utilities ------------------------------------------------
 
