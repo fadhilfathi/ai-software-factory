@@ -7,10 +7,6 @@ package handler
 // Each test asserts the response status, body, and that the
 // service was called with the right arguments.
 
-// Error aliases service.Error so test files can use *Error locally
-// (matches production code that uses *service.Error).
-type Error = service.Error
-
 import (
 	"bytes"
 	"context"
@@ -27,6 +23,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// Error aliases service.Error so test files can use *Error locally
+// (matches production code that uses *service.Error).
+type Error = service.Error
 
 // mockAgentService is a hand-rolled mock that returns canned
 // responses. It mirrors the service.AgentService interface exactly.

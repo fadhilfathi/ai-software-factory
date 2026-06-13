@@ -9,15 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func publicRoutes(c *gin.Context) bool {
-	public := map[string]bool{
-		"GET /v1/healthz":         true,
-		"POST /v1/auth/login":     true,
-		"POST /v1/auth/refresh":   true,
-		"POST /v1/users/register": true,
-	}
-	key := c.Request.Method + " " + c.FullPath()
-	return public[key]
+// publicRouteSet is the set of (method, path-prefix) pairs that bypass auth.
+// Sprint 4: Auth middleware takes map[string]bool keyed by method+path.
+// Matches the convention used in other services in the repo.
+var publicRouteSet = map[string]bool{
+	"GET /v1/healthz":         true,
+	"POST /v1/auth/login":     true,
+	"POST /v1/auth/refresh":   true,
+	"POST /v1/users/register": true,
 }
 
 func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
@@ -28,7 +27,7 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 	r.Use(middleware.RequestID())
 	r.Use(middleware.CORS(corsConfig))
 	r.Use(middleware.RateLimit(rateLimitConfig))
-	r.Use(middleware.Auth(svc.Auth, publicRoutes))
+	r.Use(middleware.Auth(svc.Auth, publicRouteSet))
 
 	auth := handler.NewAuthHandler(svc.Auth)
 	projects := handler.NewProjectHandler(svc.Project)
@@ -36,7 +35,7 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 	capabilities := handler.NewCapabilityHandler(svc.Agent) // TASK-403: capability routes moved off AgentHandler
 	tasks := handler.NewTaskHandler(svc.Task)
 	assignments := handler.NewAssignmentHandler(svc.Assignment)
-	executions := handler.NewExecutionHandler(svc.Execution)
+	executions := handler.NewExecutionHandler(svc.Execution, svc.Log)
 	deliverables := handler.NewDeliverableHandler(svc.Deliverable)
 	code := handler.NewCodeHandler(svc.Code)
 	reviews := handler.NewReviewHandler(svc.Review)

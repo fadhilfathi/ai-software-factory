@@ -23,6 +23,7 @@ type Services struct {
 	AuditLog     *AuditLogService
 	Orchestrator AgentOrchestrator
 	Sandbox      *SandboxService
+	Log          *zap.Logger
 }
 
 func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.Config) *Services {
@@ -58,6 +59,10 @@ func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.
 		Execution:    NewExecutionService(s, log, nil), // nil cfg → DefaultExecutionServiceConfig (env-var-driven failure rate)
 		Deliverable:  NewDeliverableService(s, log),
 		AuditLog:     NewAuditLogService(s, log),
+		Orchestrator: orch,
+		Sandbox:      sandbox,
+		Log:          log,
+	}
 		Orchestrator: orch,
 		Sandbox:      sandbox,
 	}

@@ -9,12 +9,6 @@ import (
 // TaskPriority represents the urgency level of a task.
 type TaskPriority string
 
-const (
-	PriorityLow      TaskPriority = "low"
-	PriorityMedium   TaskPriority = "medium"
-	PriorityHigh     TaskPriority = "high"
-	PriorityCritical TaskPriority = "critical"
-)
 
 // TaskStatus represents the lifecycle state of a task (Kanban column).
 type TaskStatus string
@@ -30,8 +24,13 @@ const (
 	TaskOpen       TaskStatus = "open"
 )
 
-
-// Task represents a unit of work within a project.
+const (
+	PriorityLow      TaskPriority = "low"
+	PriorityMedium   TaskPriority = "medium"
+	PriorityHigh     TaskPriority = "high"
+	PriorityCritical TaskPriority = "critical"
+	PriorityNormal   TaskPriority = "medium" // alias for PriorityMedium (legacy code)
+)
 type Task struct {
 	ID              uuid.UUID         `json:"id"`
 	ProjectID       uuid.UUID         `json:"project_id"`
