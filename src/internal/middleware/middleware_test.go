@@ -127,6 +127,72 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 }
 
+// TestRequireAnyRole covers TASK-425 (F-021) — the OR-semantics role guard
+// used by the role-route matrix. The matrix needs both an admin-only branch
+// (RequireAnyRole("admin") on DELETEs and /v1/users/register) and a write
+// branch (RequireAnyRole("developer", "admin") on POST/PUT/PATCH). Viewer
+// tokens must be denied by the write branch.
+//
+// Each subtest seeds the role via a tiny prelude middleware so we exercise
+// only RequireAnyRole in isolation; the production Auth middleware is
+// out of scope here (see TestAuthMiddleware / TestAPIKeyMiddleware).
+func TestRequireAnyRole(t *testing.T) {
+	build := func(role string, allowed ...string) *gin.Engine {
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		if role != "" {
+			r.Use(func(c *gin.Context) {
+				c.Set(RoleKey, role)
+				c.Next()
+			})
+		}
+		r.GET("/x", RequireAnyRole(allowed...), func(c *gin.Context) {
+			c.Status(http.StatusOK)
+		})
+		return r
+	}
+
+	t.Run("viewer_denied_for_write_matrix", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/x", nil)
+		build("viewer", "developer", "admin").ServeHTTP(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), "FORBIDDEN")
+	})
+
+	t.Run("developer_allowed_for_write_matrix", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/x", nil)
+		build("developer", "developer", "admin").ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("admin_allowed_for_write_matrix", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/x", nil)
+		build("admin", "developer", "admin").ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("admin_only_branch_denies_developer", func(t *testing.T) {
+		// Same primitive with a single role must behave like RequireRole:
+		// developer on RequireAnyRole("admin") must be 403.
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/x", nil)
+		build("developer", "admin").ServeHTTP(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+
+	t.Run("missing_role_returns_403", func(t *testing.T) {
+		// No role in the context → the exists-branch fires and the
+		// response is 403. Mirrors the original RequireRole semantics.
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/x", nil)
+		build("", "developer", "admin").ServeHTTP(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
 // TestAPIKeyMiddleware covers F-002 (Sprint 4 security review). The four
 // subtests map directly to the brief: valid_key, unknown_key, empty token,
 // non-ak_ token, tampered token. (The brief lists four; we cover five to
