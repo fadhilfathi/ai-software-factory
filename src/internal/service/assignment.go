@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
