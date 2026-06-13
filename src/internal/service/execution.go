@@ -178,6 +178,14 @@ var ErrTaskNotFound = errors.New("task not found")
 // 404 AGENT_NOT_FOUND.
 var ErrAgentNotFound = errors.New("agent not found")
 
+// ErrCrossTenantBlocked is the typed sentinel for a cross-tenant
+// access attempt. The handler maps this to 404 CROSS_TENANT_BLOCKED
+// (404 rather than 403 to avoid leaking the existence of resources
+// in other projects). Returned when the caller's project (resolved
+// from the X-Project-ID header) does not match the resource's
+// project. TASK-422 (F-016 cross-tenant execution).
+var ErrCrossTenantBlocked = errors.New("cross-tenant access blocked")
+
 // validExecutionTransitions encodes the state machine. Terminal
 // states (completed/failed) have no outgoing edges. Same-status
 // transitions are not modelled as a separate edge — see
@@ -217,24 +225,51 @@ func isValidExecutionTransition(from, to model.ExecutionStatus) bool {
 // 'failed' after a configurable sleep. The returned *Execution
 // is the just-created row (status=pending); the caller can poll
 // GetExecution to observe the goroutine's transition.
-func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID uuid.UUID) (*model.Execution, error) {
+//
+// TASK-422 (F-016): callerProjectID is the project the caller is
+// authenticated for (resolved from the X-Project-ID header by the
+// handler). It must match BOTH the task's project and the agent's
+// project; otherwise we return ErrCrossTenantBlocked. We also
+// assert task.ProjectID == agent.ProjectID as a defensive
+// triple-check — it should never be violated because assignments
+// are project-scoped upstream, but if it is, we fail closed.
+func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID, callerProjectID uuid.UUID) (*model.Execution, error) {
 	// Validate task exists. We do this BEFORE creating the row
 	// so we never leave an orphan execution behind for a task
 	// that doesn't exist. The store.ErrNotFound path is
 	// returned to the caller; the handler maps it to 404.
-	if _, err := s.store.Tasks().GetByID(taskID); err != nil {
+	task, err := s.store.Tasks().GetByID(taskID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, ErrTaskNotFound
 		}
 		return nil, fmt.Errorf("lookup task: %w", err)
 	}
 
+	// Cross-tenant check: task must be in the caller's project.
+	if task.ProjectID != callerProjectID {
+		return nil, fmt.Errorf("create execution: task %w", ErrCrossTenantBlocked)
+	}
+
 	// Validate agent exists.
-	if _, err := s.store.Agents().GetByID(ctx, agentID); err != nil {
+	agent, err := s.store.Agents().GetByID(ctx, agentID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, ErrAgentNotFound
 		}
 		return nil, fmt.Errorf("lookup agent: %w", err)
+	}
+
+	// Cross-tenant check: agent must be in the caller's project.
+	if agent.ProjectID != callerProjectID {
+		return nil, fmt.Errorf("create execution: agent %w", ErrCrossTenantBlocked)
+	}
+
+	// Defensive triple-check: task and agent must be in the same
+	// project. Assignments are project-scoped upstream so this
+	// should never fail in practice, but if it does we fail closed.
+	if task.ProjectID != agent.ProjectID {
+		return nil, fmt.Errorf("create execution: task and agent project mismatch %w", ErrCrossTenantBlocked)
 	}
 
 	now := time.Now().UTC()
@@ -319,7 +354,13 @@ func (s *ExecutionService) transitionFromMock(executionID uuid.UUID, status mode
 
 // GetExecution reads a single execution by id. Returns
 // ErrExecutionNotFound (mapped to 404 by the handler) on miss.
-func (s *ExecutionService) GetExecution(ctx context.Context, id uuid.UUID) (*model.Execution, error) {
+//
+// TASK-422 (F-016): model.Execution has no ProjectID — the
+// project is implicit via the parent task. We look up the parent
+// task and compare its ProjectID to callerProjectID. On mismatch
+// we return ErrCrossTenantBlocked (mapped to 404, not 403, to
+// avoid leaking existence).
+func (s *ExecutionService) GetExecution(ctx context.Context, id, callerProjectID uuid.UUID) (*model.Execution, error) {
 	e, err := s.store.Executions().GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -327,13 +368,48 @@ func (s *ExecutionService) GetExecution(ctx context.Context, id uuid.UUID) (*mod
 		}
 		return nil, fmt.Errorf("get execution: %w", err)
 	}
+	task, terr := s.store.Tasks().GetByID(e.TaskID)
+	if terr != nil {
+		// Parent task disappeared — treat as cross-tenant blocked
+		// rather than 500; the row is unreachable to the caller.
+		return nil, fmt.Errorf("get execution: %w", ErrCrossTenantBlocked)
+	}
+	if task.ProjectID != callerProjectID {
+		return nil, fmt.Errorf("get execution: %w", ErrCrossTenantBlocked)
+	}
 	return e, nil
 }
 
 // ListExecutions returns a keyset-paginated page of executions
 // matching the filter. The store handles cursor normalisation
 // (default page size 50, max 200).
-func (s *ExecutionService) ListExecutions(ctx context.Context, filter model.ExecutionFilter) (*model.ExecutionListResult, error) {
+//
+// TASK-422 (F-016): when a task_id or agent_id filter is set,
+// we verify that the referenced task/agent belongs to the caller's
+// project. Per-filter AND semantics: a caller asking for
+// task_id=T AND agent_id=A must pass the check for BOTH T and A.
+// An empty filter (no task/agent) returns rows visible to the
+// caller across the project — the store is responsible for the
+// actual project-scoping; here we only check filter arguments.
+func (s *ExecutionService) ListExecutions(ctx context.Context, filter model.ExecutionFilter, callerProjectID uuid.UUID) (*model.ExecutionListResult, error) {
+	if filter.TaskID != uuid.Nil {
+		task, terr := s.store.Tasks().GetByID(filter.TaskID)
+		if terr != nil {
+			return nil, fmt.Errorf("list executions: task filter %w", ErrCrossTenantBlocked)
+		}
+		if task.ProjectID != callerProjectID {
+			return nil, fmt.Errorf("list executions: task filter %w", ErrCrossTenantBlocked)
+		}
+	}
+	if filter.AgentID != uuid.Nil {
+		agent, aerr := s.store.Agents().GetByID(ctx, filter.AgentID)
+		if aerr != nil {
+			return nil, fmt.Errorf("list executions: agent filter %w", ErrCrossTenantBlocked)
+		}
+		if agent.ProjectID != callerProjectID {
+			return nil, fmt.Errorf("list executions: agent filter %w", ErrCrossTenantBlocked)
+		}
+	}
 	return s.store.Executions().List(ctx, filter)
 }
 
@@ -343,8 +419,16 @@ func (s *ExecutionService) ListExecutions(ctx context.Context, filter model.Exec
 // sets completed_at and updated_at as appropriate. A same-status
 // PATCH is treated as a no-op (returns the current row without
 // writing).
-func (s *ExecutionService) UpdateExecutionStatus(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string) (*model.Execution, error) {
-	current, err := s.GetExecution(ctx, id)
+//
+// TASK-422 (F-016): callerProjectID is propagated to the
+// internal GetExecution call, which performs the parent-task
+// project check. We DO NOT short-circuit on the cross-tenant
+// error before the state-transition check because a same-status
+// PATCH is a legal no-op and we want it to return 200 with the
+// current row (this matches the previous behaviour for the
+// same-project case). A cross-tenant caller gets 404 instead.
+func (s *ExecutionService) UpdateExecutionStatus(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string, callerProjectID uuid.UUID) (*model.Execution, error) {
+	current, err := s.GetExecution(ctx, id, callerProjectID)
 	if err != nil {
 		return nil, err
 	}

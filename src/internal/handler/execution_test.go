@@ -82,13 +82,17 @@ func newExecutionTestRouter(t *testing.T, withUserID string) (*gin.Engine, *serv
 
 // seedExecTaskAndAgent creates a task and an agent in the store
 // so CreateExecution's validation passes.
-func seedExecTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID) {
+// TASK-422: returns (taskID, agentID, projectID) so callers can pass
+// task.ProjectID as callerProjectID to the service AND set the
+// X-Project-ID header on every handler request.
+func seedExecTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 
+	projectID := uuid.New()
 	task := &model.Task{
 		ID:        uuid.New(),
-		ProjectID: uuid.New(),
+		ProjectID: projectID,
 		Title:     "exec-handler-test-" + uuid.NewString()[:8],
 		Status:    model.TaskOpen,
 		Priority:  model.PriorityNormal,
@@ -105,12 +109,14 @@ func seedExecTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID) {
 		Capabilities: []string{"coding"},
 	})
 	require.Nil(t, apiErr)
-	return task.ID, created.ID
+	return task.ID, created.ID, projectID
 }
 
 // doExecutionRequest fires a single request and returns the
-// response recorder.
-func doExecutionRequest(r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+// response recorder. projectID == uuid.Nil → omit the
+// X-Project-ID header (used to assert 400 MISSING_PROJECT_HEADER).
+// Otherwise the header is set to projectID.String().
+func doExecutionRequest(r *gin.Engine, method, path string, projectID uuid.UUID, body any) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
 		_ = json.NewEncoder(&buf).Encode(body)
@@ -118,6 +124,9 @@ func doExecutionRequest(r *gin.Engine, method, path string, body any) *httptest.
 	req := httptest.NewRequest(method, path, &buf)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if projectID != uuid.Nil {
+		req.Header.Set("X-Project-ID", projectID.String())
 	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -130,10 +139,10 @@ func doExecutionRequest(r *gin.Engine, method, path string, body any) *httptest.
 
 func TestExecutionHandler_Create_201(t *testing.T) {
 	r, _, s := newExecutionTestRouter(t, uuid.NewString())
-	taskID, agentID := seedExecTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
 
 	body := map[string]any{"task_id": taskID.String(), "agent_id": agentID.String()}
-	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", body)
+	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", projectID, body)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	var resp struct {
@@ -149,28 +158,28 @@ func TestExecutionHandler_Create_201(t *testing.T) {
 func TestExecutionHandler_Create_400_BadUUID(t *testing.T) {
 	r, _, _ := newExecutionTestRouter(t, uuid.NewString())
 	body := map[string]any{"task_id": "not-a-uuid", "agent_id": uuid.NewString()}
-	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", body)
+	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", uuid.New(), body)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	body = map[string]any{"task_id": uuid.NewString(), "agent_id": "still-not-a-uuid"}
-	w = doExecutionRequest(r, http.MethodPost, "/v1/executions", body)
+	w = doExecutionRequest(r, http.MethodPost, "/v1/executions", uuid.New(), body)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestExecutionHandler_Create_404(t *testing.T) {
 	r, _, s := newExecutionTestRouter(t, uuid.NewString())
-	_, agentID := seedExecTaskAndAgent(t, s)
+	_, agentID, projectA := seedExecTaskAndAgent(t, s)
 
 	// Task does not exist.
 	body := map[string]any{"task_id": uuid.NewString(), "agent_id": agentID.String()}
-	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", body)
+	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", projectA, body)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "TASK_NOT_FOUND")
 
 	// Agent does not exist.
-	taskID, _ := seedExecTaskAndAgent(t, s)
+	taskID, _, projectB := seedExecTaskAndAgent(t, s)
 	body = map[string]any{"task_id": taskID.String(), "agent_id": uuid.NewString()}
-	w = doExecutionRequest(r, http.MethodPost, "/v1/executions", body)
+	w = doExecutionRequest(r, http.MethodPost, "/v1/executions", projectB, body)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "AGENT_NOT_FOUND")
 }
@@ -181,11 +190,11 @@ func TestExecutionHandler_Create_404(t *testing.T) {
 
 func TestExecutionHandler_GetByID_Success(t *testing.T) {
 	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
-	taskID, agentID := seedExecTaskAndAgent(t, s)
-	exec, err := svc.CreateExecution(context.Background(), taskID, agentID)
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
-	w := doExecutionRequest(r, http.MethodGet, "/v1/executions/"+exec.ExecutionID.String(), nil)
+	w := doExecutionRequest(r, http.MethodGet, "/v1/executions/"+exec.ExecutionID.String(), projectID, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp struct {
@@ -197,7 +206,7 @@ func TestExecutionHandler_GetByID_Success(t *testing.T) {
 
 func TestExecutionHandler_GetByID_404(t *testing.T) {
 	r, _, _ := newExecutionTestRouter(t, uuid.NewString())
-	w := doExecutionRequest(r, http.MethodGet, "/v1/executions/"+uuid.NewString(), nil)
+	w := doExecutionRequest(r, http.MethodGet, "/v1/executions/"+uuid.NewString(), uuid.New(), nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "EXECUTION_NOT_FOUND")
 }
@@ -208,21 +217,28 @@ func TestExecutionHandler_GetByID_404(t *testing.T) {
 
 func TestExecutionHandler_List_WithFilters(t *testing.T) {
 	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
-	taskA, agentA := seedExecTaskAndAgent(t, s)
-	taskB, agentB := seedExecTaskAndAgent(t, s)
+	taskA, agentA, projectA := seedExecTaskAndAgent(t, s)
+	taskB, agentB, _ := seedExecTaskAndAgent(t, s)
+
+	// Re-link taskB/agentB to projectA so all 4 executions land
+	// in the same project (the original filter counts hold).
+	// Cross-project semantics are covered by the new tests at the
+	// bottom of this file (TASK-422).
+	require.NoError(t, s.Tasks().Update(&model.Task{ID: taskB, ProjectID: projectA, Title: "relinked", Status: model.TaskOpen, Priority: model.PriorityNormal, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
+	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentActive, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
 
 	// Seed: 2 on (taskA, agentA), 1 on (taskA, agentB), 1 on (taskB, agentA).
 	for i := 0; i < 2; i++ {
-		_, err := svc.CreateExecution(context.Background(), taskA, agentA)
+		_, err := svc.CreateExecution(context.Background(), taskA, agentA, projectA)
 		require.NoError(t, err)
 	}
-	_, err := svc.CreateExecution(context.Background(), taskA, agentB)
+	_, err := svc.CreateExecution(context.Background(), taskA, agentB, projectA)
 	require.NoError(t, err)
-	_, err = svc.CreateExecution(context.Background(), taskB, agentA)
+	_, err = svc.CreateExecution(context.Background(), taskB, agentA, projectA)
 	require.NoError(t, err)
 
 	// No filter: all 4.
-	w := doExecutionRequest(r, http.MethodGet, "/v1/executions", nil)
+	w := doExecutionRequest(r, http.MethodGet, "/v1/executions", projectA, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp struct {
 		Data model.ExecutionListResult `json:"data"`
@@ -231,25 +247,25 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 	assert.Len(t, resp.Data.Items, 4)
 
 	// task_id filter
-	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?task_id="+taskA.String(), nil)
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?task_id="+taskA.String(), projectA, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Data.Items, 3)
 
 	// agent_id filter
-	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?agent_id="+agentA.String(), nil)
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?agent_id="+agentA.String(), projectA, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Data.Items, 3)
 
 	// status=pending filter
-	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=pending", nil)
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=pending", projectA, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.GreaterOrEqual(t, len(resp.Data.Items), 1, "expected at least one pending row right after create")
 
 	// status=garbage → 400
-	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=garbage", nil)
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=garbage", projectA, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "INVALID_EXECUTION_STATUS")
 }
@@ -260,12 +276,12 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 
 func TestExecutionHandler_Patch_200(t *testing.T) {
 	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
-	taskID, agentID := seedExecTaskAndAgent(t, s)
-	exec, err := svc.CreateExecution(context.Background(), taskID, agentID)
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
 	body := map[string]any{"status": "running"}
-	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), body)
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp struct {
@@ -277,7 +293,7 @@ func TestExecutionHandler_Patch_200(t *testing.T) {
 	// Now move to completed with an error_message (no-op for
 	// the state but tests that the field is accepted).
 	body = map[string]any{"status": "completed"}
-	w = doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), body)
+	w = doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, model.ExecutionStatusCompleted, resp.Data.Status)
@@ -286,16 +302,16 @@ func TestExecutionHandler_Patch_200(t *testing.T) {
 
 func TestExecutionHandler_Patch_409(t *testing.T) {
 	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
-	taskID, agentID := seedExecTaskAndAgent(t, s)
-	exec, err := svc.CreateExecution(context.Background(), taskID, agentID)
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
 	// pending → running is valid; running → pending is not.
-	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil)
+	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
 	require.NoError(t, err)
 
 	body := map[string]any{"status": "pending"}
-	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), body)
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Contains(t, w.Body.String(), "INVALID_STATE_TRANSITION")
 }
@@ -303,7 +319,7 @@ func TestExecutionHandler_Patch_409(t *testing.T) {
 func TestExecutionHandler_Patch_404(t *testing.T) {
 	r, _, _ := newExecutionTestRouter(t, uuid.NewString())
 	body := map[string]any{"status": "running"}
-	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+uuid.NewString(), body)
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+uuid.NewString(), uuid.New(), body)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "EXECUTION_NOT_FOUND")
 }
@@ -316,7 +332,67 @@ func TestExecutionHandler_MissingAuth_401(t *testing.T) {
 	// No user_id → middleware short-circuits with 401 before
 	// the handler is even called.
 	r, _, _ := newExecutionTestRouter(t, "")
-	w := doExecutionRequest(r, http.MethodGet, "/v1/executions", nil)
+	w := doExecutionRequest(r, http.MethodGet, "/v1/executions", uuid.New(), nil)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assert.Contains(t, w.Body.String(), "UNAUTHORIZED")
+}
+// ----------------------------------------------------------------------------
+// Cross-tenant (F-016, TASK-422)
+// ----------------------------------------------------------------------------
+
+func TestExecutionHandler_MissingProjectHeader_400(t *testing.T) {
+	r, _, s := newExecutionTestRouter(t, uuid.NewString())
+	taskID, agentID, _ := seedExecTaskAndAgent(t, s)
+
+	body := map[string]any{"task_id": taskID.String(), "agent_id": agentID.String()}
+	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", uuid.Nil, body)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "MISSING_PROJECT_HEADER")
+
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions/"+uuid.NewString(), uuid.Nil, nil)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "MISSING_PROJECT_HEADER")
+
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions", uuid.Nil, nil)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "MISSING_PROJECT_HEADER")
+
+	w = doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+uuid.NewString(), uuid.Nil, body)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "MISSING_PROJECT_HEADER")
+}
+
+func TestExecutionHandler_Create_CrossTenant_404(t *testing.T) {
+	r, _, s := newExecutionTestRouter(t, uuid.NewString())
+	taskID, agentID, _ := seedExecTaskAndAgent(t, s)
+
+	body := map[string]any{"task_id": taskID.String(), "agent_id": agentID.String()}
+	// Send a DIFFERENT project in the header than the one the
+	// task/agent belong to.
+	w := doExecutionRequest(r, http.MethodPost, "/v1/executions", uuid.New(), body)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestExecutionHandler_GetByID_CrossTenant_404(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
+	require.NoError(t, err)
+
+	w := doExecutionRequest(r, http.MethodGet, "/v1/executions/"+exec.ExecutionID.String(), uuid.New(), nil)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestExecutionHandler_Patch_CrossTenant_404(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
+	require.NoError(t, err)
+
+	body := map[string]any{"status": "running"}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), uuid.New(), body)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
 }
