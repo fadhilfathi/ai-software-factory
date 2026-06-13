@@ -94,8 +94,8 @@ func newIntegrationRouter(t *testing.T, s integration.Store) *IntegrationTestEnv
 	v1.GET("/agents/:id/capabilities", caps.ListAgentCapabilities)
 	v1.GET("/capabilities", caps.ListCatalogCapabilities)
 
-	v1.POST("/projects/:projectId/tasks", tasks.Create)
-	v1.GET("/projects/:projectId/tasks", tasks.List)
+	v1.POST("/projects/:id/tasks", tasks.Create)
+	v1.GET("/projects/:id/tasks", tasks.List)
 	v1.GET("/tasks/:id", tasks.Get)
 	v1.PUT("/tasks/:id", tasks.Update)
 	v1.PATCH("/tasks/:id/status", tasks.UpdateStatus)
@@ -243,7 +243,7 @@ func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
 	assert.Equal(t, "Smoke Test Agent", agent.Name)
 	assert.Equal(t, "developer", agent.Role)
 
-	// Step 2: POST /v1/projects/:projectId/tasks — create a task
+	// Step 2: POST /v1/projects/:id/tasks — create a task
 	w = doRequest(t, env, http.MethodPost,
 		"/v1/projects/"+projectID+"/tasks", "",
 		map[string]any{

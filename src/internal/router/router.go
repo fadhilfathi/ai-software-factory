@@ -69,8 +69,8 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 		v1.GET("/agents/:id/capabilities", capabilities.ListAgentCapabilities)
 		v1.GET("/capabilities", capabilities.ListCatalogCapabilities)
 
-		v1.POST("/projects/:projectId/tasks", tasks.Create)
-		v1.GET("/projects/:projectId/tasks", tasks.List)
+		v1.POST("/projects/:id/tasks", tasks.Create)
+		v1.GET("/projects/:id/tasks", tasks.List)
 		v1.GET("/tasks/:id", tasks.Get)
 		v1.PUT("/tasks/:id", tasks.Update)
 		v1.DELETE("/tasks/:id", tasks.Delete)
