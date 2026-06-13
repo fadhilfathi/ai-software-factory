@@ -16,6 +16,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -52,7 +53,11 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository }}/api:${{ env.IMAGE_TAG }}
             ${{ env.REGISTRY }}/${{ github.repository }}/api:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-to dropped for Sprint 5 (TASK-429). The default `docker` driver
+          # does not support cache export — proper fix is
+          # `docker/setup-buildx-action@v3` with `driver: docker-container`,
+          # filed as a follow-up. Cache reads still work, so first builds
+          # after a clean cache are still fast.
 
       # --- Frontend image ---
       - name: Build & push Frontend
@@ -65,7 +70,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository }}/frontend:${{ env.IMAGE_TAG }}
             ${{ env.REGISTRY }}/${{ github.repository }}/frontend:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-to dropped for Sprint 5 (TASK-429) — see API step for rationale.
 
   # ---------------------------------------------------------------------------
   # Deploy — update the running stack
