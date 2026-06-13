@@ -99,6 +99,9 @@ func NewAssignmentService(s store.Store, capSvc *CapabilityService, log *zap.Log
 //     new active row (concurrent POST race). Mapped from
 //     store.ErrAlreadyExists.
 //   - 500 INTERNAL on store error
+// AssignTaskToAgent wires a task to an agent. The callerProjectID is
+// checked against task.ProjectID AND agent.ProjectID — defensive 404
+// with code CROSS_TENANT_BLOCKED on any divergence (F-014, Sprint 5).
 func (s *AssignmentService) AssignTaskToAgent(
 	ctx context.Context,
 	taskID uuid.UUID,
@@ -106,8 +109,20 @@ func (s *AssignmentService) AssignTaskToAgent(
 	notes string,
 	assignedBy *uuid.UUID,
 	capabilitiesRequired []string,
+	callerProjectID uuid.UUID,
 ) (*AssignmentResult, *Error) {
+	// F-014: cross-tenant check (Sprint 5, Lead-accepted 2026-06-13).
+	// Triple-check task.ProjectID == agent.ProjectID == callerProjectID.
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
 	task, err := s.store.Tasks().GetByID(taskID)
+	if err != nil {
+		return nil, notFound("Task not found")
+	}
+	if task.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
+	}
 	if err != nil {
 		return nil, notFound("Task not found")
 	}
@@ -119,6 +134,17 @@ func (s *AssignmentService) AssignTaskToAgent(
 	// capability check, one task update, one tx that does three
 	// writes atomically.
 	agent, err := s.store.Agents().GetByID(ctx, agentID)
+	if err != nil {
+		return nil, notFound("Agent not found")
+	}
+	if agent.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
+	}
+	// Defensive: the task and agent must be in the same project
+	// (per Lead brief: "Defensive 404 if any of the three diverge")
+	if task.ProjectID != agent.ProjectID {
+		return nil, crossTenantBlocked()
+	}
 	if err != nil {
 		return nil, notFound("Agent not found")
 	}
@@ -311,12 +337,26 @@ func (s *AssignmentService) AssignTaskToAgent(
 //     yet" from "no such task").
 //   - Task exists but has no events → 200 with empty data array.
 //   - Store error → 500 INTERNAL.
-func (s *AssignmentService) ListAssignmentHistory(ctx context.Context, taskID uuid.UUID) ([]*model.AssignmentEvent, *Error) {
+// ListAssignmentHistory reads the append-only history. The
+// callerProjectID is checked against task.ProjectID; cross-tenant
+// miss returns 404 CROSS_TENANT_BLOCKED (F-014, Sprint 5).
+func (s *AssignmentService) ListAssignmentHistory(ctx context.Context, taskID uuid.UUID, callerProjectID uuid.UUID) ([]*model.AssignmentEvent, *Error) {
 	// Existence check up front so a missing task surfaces as 404
 	// rather than an empty list. We use Tasks().GetByID, which
 	// returns store.ErrNotFound on miss.
-	if _, err := s.store.Tasks().GetByID(taskID); err != nil {
+	// F-014: cross-tenant check (Sprint 5, Lead-accepted 2026-06-13).
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
+	task, err := s.store.Tasks().GetByID(taskID)
+	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Task not found")
+	}
+	if err != nil {
+		return nil, internalError("Failed to fetch task")
+	}
+	if task.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
 	}
 
 	events, err := s.store.AssignmentEvents().ListByTask(ctx, taskID)

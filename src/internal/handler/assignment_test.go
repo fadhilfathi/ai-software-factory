@@ -47,6 +47,7 @@ type mockAssignmentService struct {
 	lastNotes           string
 	lastAssignedBy      *uuid.UUID
 	lastCapsRequired    []string
+	lastCallerProjectID uuid.UUID
 	assignCallCount     int
 
 	// Response to return from ListAssignmentHistory.
@@ -63,6 +64,7 @@ func (m *mockAssignmentService) AssignTaskToAgent(
 	notes string,
 	assignedBy *uuid.UUID,
 	capabilitiesRequired []string,
+	callerProjectID uuid.UUID,
 ) (*service.AssignmentResult, *service.Error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -72,13 +74,15 @@ func (m *mockAssignmentService) AssignTaskToAgent(
 	m.lastNotes = notes
 	m.lastAssignedBy = assignedBy
 	m.lastCapsRequired = capabilitiesRequired
+	m.lastCallerProjectID = callerProjectID
 	m.assignCallCount++
 	return m.assignResult, m.assignErr
 }
 
-func (m *mockAssignmentService) ListAssignmentHistory(ctx context.Context, taskID uuid.UUID) ([]*model.AssignmentEvent, *service.Error) {
+func (m *mockAssignmentService) ListAssignmentHistory(ctx context.Context, taskID uuid.UUID, callerProjectID uuid.UUID) ([]*model.AssignmentEvent, *service.Error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCallerProjectID = callerProjectID
 	m.listCallCount++
 	return m.listResult, m.listErr
 }
@@ -108,7 +112,7 @@ func newAssignmentTestRouter(t *testing.T, withUserID string) (*gin.Engine, *moc
 	return r, m
 }
 
-func doAssignmentRequest(r *gin.Engine, method, path string, body interface{}) *httptest.ResponseRecorder {
+func doAssignmentRequest(r *gin.Engine, method, path, projectID string, body interface{}) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
 		_ = json.NewEncoder(&buf).Encode(body)
@@ -116,6 +120,9 @@ func doAssignmentRequest(r *gin.Engine, method, path string, body interface{}) *
 	req := httptest.NewRequest(method, path, &buf)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if projectID != "" {
+		req.Header.Set("X-Project-ID", projectID)
 	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -127,6 +134,7 @@ func doAssignmentRequest(r *gin.Engine, method, path string, body interface{}) *
 func TestAssignmentHandler_Assign_Success(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	taskID := uuid.New()
 	agentID := uuid.New()
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
@@ -157,7 +165,7 @@ func TestAssignmentHandler_Assign_Success(t *testing.T) {
 		"capabilities_required": []string{"coding"},
 		"notes":                 "first assignment",
 	}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
@@ -192,6 +200,7 @@ func TestAssignmentHandler_Assign_Success(t *testing.T) {
 func TestAssignmentHandler_Assign_NoInMemoryNotesMutation(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	taskID := uuid.New()
 	agentID := uuid.New()
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
@@ -219,7 +228,7 @@ func TestAssignmentHandler_Assign_NoInMemoryNotesMutation(t *testing.T) {
 		"agent_id": agentID.String(),
 		"notes":    "would-be-ignored",
 	}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
@@ -235,6 +244,7 @@ func TestAssignmentHandler_Assign_NoInMemoryNotesMutation(t *testing.T) {
 func TestAssignmentHandler_Assign_Idempotent(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	taskID := uuid.New()
 	agentID := uuid.New()
 
@@ -245,7 +255,7 @@ func TestAssignmentHandler_Assign_Idempotent(t *testing.T) {
 	}
 
 	body := map[string]interface{}{"agent_id": agentID.String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
@@ -258,12 +268,13 @@ func TestAssignmentHandler_Assign_Idempotent(t *testing.T) {
 func TestAssignmentHandler_Assign_TaskNotFound(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	m.assignErr = &service.Error{
 		Status: 404, Code: "NOT_FOUND", Message: "Task not found",
 	}
 
 	body := map[string]interface{}{"agent_id": uuid.New().String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	var resp map[string]interface{}
@@ -275,24 +286,26 @@ func TestAssignmentHandler_Assign_TaskNotFound(t *testing.T) {
 func TestAssignmentHandler_Assign_AgentNotFound(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	m.assignErr = &service.Error{
 		Status: 404, Code: "NOT_FOUND", Message: "Agent not found",
 	}
 
 	body := map[string]interface{}{"agent_id": uuid.New().String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAssignmentHandler_Assign_CapabilityMismatch(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	m.assignErr = &service.Error{
 		Status: 409, Code: "CAPABILITY_MISMATCH", Message: "agent does not hold all required capabilities",
 	}
 
 	body := map[string]interface{}{"agent_id": uuid.New().String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusConflict, w.Code)
 
 	var resp map[string]interface{}
@@ -304,8 +317,9 @@ func TestAssignmentHandler_Assign_CapabilityMismatch(t *testing.T) {
 func TestAssignmentHandler_Assign_MissingAgentID(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	body := map[string]interface{}{} // no agent_id
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, 0, m.assignCallCount, "service must not be called on bad request")
 }
@@ -313,8 +327,9 @@ func TestAssignmentHandler_Assign_MissingAgentID(t *testing.T) {
 func TestAssignmentHandler_Assign_InvalidAgentID(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	body := map[string]interface{}{"agent_id": "not-a-uuid"}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, 0, m.assignCallCount)
 }
@@ -322,8 +337,9 @@ func TestAssignmentHandler_Assign_InvalidAgentID(t *testing.T) {
 func TestAssignmentHandler_Assign_InvalidTaskID(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	body := map[string]interface{}{"agent_id": uuid.New().String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/not-a-uuid/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/not-a-uuid/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, 0, m.assignCallCount)
 }
@@ -331,6 +347,7 @@ func TestAssignmentHandler_Assign_InvalidTaskID(t *testing.T) {
 func TestAssignmentHandler_Assign_AnonymousCaller_AssignedByNil(t *testing.T) {
 	// No user_id in middleware context — system-initiated caller.
 	r, m := newAssignmentTestRouter(t, "")
+	projectID := uuid.New()
 	taskID := uuid.New()
 	agentID := uuid.New()
 
@@ -346,7 +363,7 @@ func TestAssignmentHandler_Assign_AnonymousCaller_AssignedByNil(t *testing.T) {
 	}
 
 	body := map[string]interface{}{"agent_id": agentID.String()}
-	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", body)
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+taskID.String()+"/assign", projectID.String(), body)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Service must have been called with assignedBy == nil.
@@ -358,6 +375,7 @@ func TestAssignmentHandler_Assign_AnonymousCaller_AssignedByNil(t *testing.T) {
 func TestAssignmentHandler_History_Success(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	taskID := uuid.New()
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
@@ -369,7 +387,7 @@ func TestAssignmentHandler_History_Success(t *testing.T) {
 		{ID: uuid.New(), AssignmentID: uuid.New(), TaskID: taskID, AgentID: &agentA, AssignedAt: now.Add(-time.Hour), Action: model.AssignmentActionAssign},
 	}
 
-	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+taskID.String()+"/history", nil)
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+taskID.String()+"/history", projectID.String(), nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
@@ -383,9 +401,10 @@ func TestAssignmentHandler_History_Success(t *testing.T) {
 func TestAssignmentHandler_History_EmptyForNewTask(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	m.listResult = []*model.AssignmentEvent{}
 
-	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", nil)
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", projectID.String(), nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
@@ -397,16 +416,74 @@ func TestAssignmentHandler_History_EmptyForNewTask(t *testing.T) {
 func TestAssignmentHandler_History_TaskNotFound(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
 	m.listErr = &service.Error{Status: 404, Code: "NOT_FOUND", Message: "Task not found"}
 
-	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", nil)
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", projectID.String(), nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAssignmentHandler_History_InvalidTaskID(t *testing.T) {
 	userID := uuid.New()
 	r, m := newAssignmentTestRouter(t, userID.String())
-	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/not-a-uuid/history", nil)
+	projectID := uuid.New()
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/not-a-uuid/history", projectID.String(), nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, 0, m.listCallCount)
+}
+
+// ---- F-014 cross-tenant handler tests (Sprint 5) -----------------
+
+// TestAssignmentHandler_Assign_CrossTenant: mock returns 404
+// CROSS_TENANT_BLOCKED, handler should pass it through.
+func TestAssignmentHandler_Assign_CrossTenant(t *testing.T) {
+	userID := uuid.New()
+	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
+	var assignedBy uuid.UUID = uuid.New()
+	_ = assignedBy
+	m.assignErr = &service.Error{Status: 404, Code: "CROSS_TENANT_BLOCKED", Message: "blocked"}
+
+	body := map[string]interface{}{"agent_id": uuid.New().String()}
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", projectID.String(), body)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, 1, m.assignCallCount)
+	assert.Equal(t, projectID, m.lastCallerProjectID)
+}
+
+// TestAssignmentHandler_Assign_MissingProjectHeader: empty X-Project-ID
+// returns 400 MISSING_PROJECT_HEADER without calling the service.
+func TestAssignmentHandler_Assign_MissingProjectHeader(t *testing.T) {
+	userID := uuid.New()
+	r, m := newAssignmentTestRouter(t, userID.String())
+
+	body := map[string]interface{}{"agent_id": uuid.New().String()}
+	w := doAssignmentRequest(r, http.MethodPost, "/v1/tasks/"+uuid.New().String()+"/assign", "", body)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, 0, m.assignCallCount)
+}
+
+// TestAssignmentHandler_History_CrossTenant: mock returns 404
+// CROSS_TENANT_BLOCKED, handler should pass it through.
+func TestAssignmentHandler_History_CrossTenant(t *testing.T) {
+	userID := uuid.New()
+	r, m := newAssignmentTestRouter(t, userID.String())
+	projectID := uuid.New()
+	m.listErr = &service.Error{Status: 404, Code: "CROSS_TENANT_BLOCKED", Message: "blocked"}
+
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", projectID.String(), nil)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, 1, m.listCallCount)
+	assert.Equal(t, projectID, m.lastCallerProjectID)
+}
+
+// TestAssignmentHandler_History_MissingProjectHeader: empty X-Project-ID
+// returns 400 MISSING_PROJECT_HEADER without calling the service.
+func TestAssignmentHandler_History_MissingProjectHeader(t *testing.T) {
+	userID := uuid.New()
+	r, m := newAssignmentTestRouter(t, userID.String())
+
+	w := doAssignmentRequest(r, http.MethodGet, "/v1/tasks/"+uuid.New().String()+"/history", "", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, 0, m.listCallCount)
 }

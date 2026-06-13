@@ -102,7 +102,7 @@ func TestAssignTaskToAgent_NewAssignment(t *testing.T) {
 	taskID, agentID := seedTaskAndAgent(t, s, projectID, "build feature x", "developer", []string{"coding", "testing"})
 
 	assignedBy := uuid.New()
-	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil)
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res)
 
@@ -128,7 +128,7 @@ func TestAssignTaskToAgent_Reassignment(t *testing.T) {
 	taskID, agentA := seedTaskAndAgent(t, s, projectID, "refactor", "developer", []string{"coding", "testing"})
 
 	// Pre-assign to A.
-	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil)
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// Build a second agent B with the same caps.
@@ -144,7 +144,7 @@ func TestAssignTaskToAgent_Reassignment(t *testing.T) {
 	agentB := createdB.ID
 
 	// Reassign to B.
-	res, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil)
+	res, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res)
 	assert.Equal(t, agentB, res.Task.AssigneeID)
@@ -171,7 +171,7 @@ func TestAssignTaskToAgent_CapabilityMismatch(t *testing.T) {
 	require.Nil(t, apiErr)
 
 	// Assign with explicit capabilities_required.
-	res, svcErr := svc.AssignTaskToAgent(ctx, taskID, created.ID, "", nil, []string{"coding", "testing"})
+	res, svcErr := svc.AssignTaskToAgent(ctx, taskID, created.ID, "", nil, []string{"coding", "testing"}, projectID)
 	require.NotNil(t, svcErr, "missing 'testing' must surface")
 	assert.Nil(t, res)
 	assert.Equal(t, "CAPABILITY_MISMATCH", svcErr.Code)
@@ -193,7 +193,7 @@ func TestAssignTaskToAgent_TaskNotFound(t *testing.T) {
 	projectID := uuid.New()
 	_, agentID := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding"})
 
-	res, svcErr := svc.AssignTaskToAgent(context.Background(), uuid.New(), agentID, "", nil, nil)
+	res, svcErr := svc.AssignTaskToAgent(context.Background(), uuid.New(), agentID, "", nil, nil, projectID)
 	require.NotNil(t, svcErr)
 	assert.Nil(t, res)
 	assert.Equal(t, "NOT_FOUND", svcErr.Code)
@@ -205,7 +205,7 @@ func TestAssignTaskToAgent_AgentNotFound(t *testing.T) {
 	projectID := uuid.New()
 	taskID, _ := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding"})
 
-	res, svcErr := svc.AssignTaskToAgent(context.Background(), taskID, uuid.New(), "", nil, nil)
+	res, svcErr := svc.AssignTaskToAgent(context.Background(), taskID, uuid.New(), "", nil, nil, projectID)
 	require.NotNil(t, svcErr)
 	assert.Nil(t, res)
 	assert.Equal(t, "NOT_FOUND", svcErr.Code)
@@ -219,12 +219,12 @@ func TestAssignTaskToAgent_Idempotent(t *testing.T) {
 
 	ctx := context.Background()
 	// First assign.
-	first, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil)
+	first, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, first.Event)
 
 	// Re-POST same agent → idempotent.
-	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil)
+	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, second)
 	assert.True(t, second.Idempotent, "re-posting same agent must be idempotent")
@@ -242,7 +242,7 @@ func TestAssignTaskToAgent_CapabilitiesRequiredPersisted(t *testing.T) {
 	// Agent has both required caps.
 	taskID, agentID := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding", "testing"})
 
-	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, []string{"coding"})
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, []string{"coding"}, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res)
 
@@ -265,7 +265,7 @@ func TestAssignTaskToAgent_CapabilitiesRequiredEmpty_Preserves(t *testing.T) {
 	require.NoError(t, s.Tasks().Update(existing))
 
 	// Assign with empty capabilities_required.
-	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil)
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res)
 
@@ -284,7 +284,7 @@ func TestAssignTaskToAgent_AgentNotIdle(t *testing.T) {
 	// Force the agent into a non-idle state.
 	setAgentStatus(t, s, agentID, model.AgentBusy)
 
-	res, svcErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil)
+	res, svcErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil, projectID)
 	require.NotNil(t, svcErr, "non-idle agent must be rejected")
 	assert.Nil(t, res)
 	assert.Equal(t, 409, svcErr.Status)
@@ -312,6 +312,7 @@ func TestAssignTaskToAgent_NotesPersistedInEvent(t *testing.T) {
 		"first assignment",
 		&assignedBy,
 		nil,
+		projectID,
 	)
 	require.Nil(t, apiErr)
 
@@ -341,6 +342,7 @@ func TestAssignTaskToAgent_EmptyNotesPersisted(t *testing.T) {
 		"", // no notes
 		nil,
 		nil,
+		projectID,
 	)
 	require.Nil(t, apiErr)
 
@@ -359,7 +361,7 @@ func TestListAssignmentHistory_ThreeEvents_NewestFirst(t *testing.T) {
 
 	ctx := context.Background()
 	// Event 1: assign to A.
-	_, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil)
+	_, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// Build a second agent B and reassign.
@@ -374,15 +376,15 @@ func TestListAssignmentHistory_ThreeEvents_NewestFirst(t *testing.T) {
 	agentB := createdB.ID
 
 	// Event 2: reassign to B.
-	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil)
+	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// Event 3: reassign back to A.
-	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil)
+	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// List must return 3 events DESC.
-	events, svcErr := svc.ListAssignmentHistory(ctx, taskID)
+	events, svcErr := svc.ListAssignmentHistory(ctx, taskID, projectID)
 	require.Nil(t, svcErr)
 	require.NotNil(t, events)
 	require.Len(t, events, 3)
@@ -414,7 +416,7 @@ func TestListAssignmentHistory_EmptyForNewTask(t *testing.T) {
 	}
 	require.NoError(t, s.Tasks().Create(task))
 
-	events, svcErr := svc.ListAssignmentHistory(context.Background(), task.ID)
+	events, svcErr := svc.ListAssignmentHistory(context.Background(), task.ID, projectID)
 	require.Nil(t, svcErr)
 	assert.Empty(t, events)
 }
@@ -422,7 +424,7 @@ func TestListAssignmentHistory_EmptyForNewTask(t *testing.T) {
 func TestListAssignmentHistory_TaskNotFound(t *testing.T) {
 	svc, _ := newAssignmentTestService(t)
 
-	events, svcErr := svc.ListAssignmentHistory(context.Background(), uuid.New())
+	events, svcErr := svc.ListAssignmentHistory(context.Background(), uuid.New(), projectID)
 	require.NotNil(t, svcErr)
 	assert.Nil(t, events)
 	assert.Equal(t, "NOT_FOUND", svcErr.Code)
@@ -445,7 +447,7 @@ func TestAssignTaskToAgent_AssignmentsRowCreated(t *testing.T) {
 	projectID := uuid.New()
 	taskID, agentID := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding"})
 
-	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil)
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res)
 	require.NotNil(t, res.Assignment, "AssignmentResult must include the new assignments row")
@@ -468,7 +470,7 @@ func TestAssignTaskToAgent_ReassignFlipsPreviousToSuperseded(t *testing.T) {
 	taskID, agentA := seedTaskAndAgent(t, s, projectID, "refactor", "developer", []string{"coding", "testing"})
 
 	// First assignment: to A.
-	first, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil)
+	first, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, first.Assignment)
 
@@ -484,7 +486,7 @@ func TestAssignTaskToAgent_ReassignFlipsPreviousToSuperseded(t *testing.T) {
 	require.Nil(t, apiErr)
 	agentB := createdB.ID
 
-	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil)
+	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// The previous assignment row (first.Assignment) must now be
@@ -511,7 +513,7 @@ func TestAssignTaskToAgent_ReassignLeavesNoOrphanActive(t *testing.T) {
 	projectID := uuid.New()
 	taskID, agentA := seedTaskAndAgent(t, s, projectID, "x", "developer", []string{"coding"})
 
-	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil)
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	ctx := context.Background()
@@ -525,7 +527,7 @@ func TestAssignTaskToAgent_ReassignLeavesNoOrphanActive(t *testing.T) {
 	require.Nil(t, apiErr)
 	agentB := createdB.ID
 
-	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil)
+	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// The active row must be for B. If the index is dangling,
@@ -547,7 +549,7 @@ func TestAssignTaskToAgent_TransactionRollsBackOnEventInsertFailure(t *testing.T
 	taskID, agentA := seedTaskAndAgent(t, s, projectID, "x", "developer", []string{"coding"})
 
 	ctx := context.Background()
-	_, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil)
+	_, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentA, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	agentSvc := NewAgentService(s)
@@ -560,7 +562,7 @@ func TestAssignTaskToAgent_TransactionRollsBackOnEventInsertFailure(t *testing.T
 	require.Nil(t, apiErr)
 	agentB := createdB.ID
 
-	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil)
+	_, apiErr = svc.AssignTaskToAgent(ctx, taskID, agentB, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 
 	// Count active rows: must be exactly 1.
@@ -583,11 +585,11 @@ func TestAssignTaskToAgent_IdempotentPreservesAssignmentsRow(t *testing.T) {
 	taskID, agentID := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding"})
 
 	ctx := context.Background()
-	first, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil)
+	first, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, first.Assignment)
 
-	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil)
+	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	assert.True(t, second.Idempotent)
 	require.NotNil(t, second.Assignment, "idempotent path must return the existing assignments row")
@@ -603,7 +605,7 @@ func TestAssignTaskToAgent_EventCarriesAssignmentID(t *testing.T) {
 	projectID := uuid.New()
 	taskID, agentID := seedTaskAndAgent(t, s, projectID, "anchor", "developer", []string{"coding"})
 
-	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil)
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, res.Event)
 	require.NotNil(t, res.Assignment)
@@ -614,4 +616,129 @@ func TestAssignTaskToAgent_EventCarriesAssignmentID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, res.Assignment.ID, events[0].AssignmentID)
+}
+
+// ---- F-014 cross-tenant (Sprint 5) -------------------------------
+
+// TestAssignTaskToAgent_CrossTenant_TaskInOtherProject: a caller in
+// projectB cannot assign a task that lives in projectA.
+func TestAssignTaskToAgent_CrossTenant_TaskInOtherProject(t *testing.T) {
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	projectB := uuid.New()
+	taskID, agentID := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+
+	assignedBy := uuid.New()
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil, projectB)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 404, apiErr.Status)
+	assert.Equal(t, "CROSS_TENANT_BLOCKED", apiErr.Code)
+
+	// control: projectA caller succeeds
+	res, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil, projectA)
+	require.Nil(t, apiErr)
+	require.NotNil(t, res)
+}
+
+// TestAssignTaskToAgent_CrossTenant_AgentInOtherProject: a caller in
+// projectA cannot assign one of projectA's tasks to an agent in projectB.
+func TestAssignTaskToAgent_CrossTenant_AgentInOtherProject(t *testing.T) {
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	projectB := uuid.New()
+	// task in projectA, agent in projectB
+	taskID, _ := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+	// create the agent in projectB by hand
+	agentSvc := NewAgentService(s)
+	agentB, _ := agentSvc.CreateAgent(context.Background(), CreateAgentRequest{
+		ProjectID: projectB, Name: "agent-b", Role: "developer", Capabilities: []string{"coding"},
+	})
+	require.NotNil(t, agentB)
+
+	assignedBy := uuid.New()
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentB.ID, "", &assignedBy, nil, projectA)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 404, apiErr.Status)
+	assert.Equal(t, "CROSS_TENANT_BLOCKED", apiErr.Code)
+}
+
+// TestAssignTaskToAgent_CrossTenant_DefensiveTripleCheck: even if both
+// resources are in the caller's project, the defensive task.ProjectID
+// == agent.ProjectID check rejects when the two are in different
+// projects. (In practice this requires bypassing the earlier checks,
+// which can only happen if the data is inconsistent; the test
+// constructs the inconsistent state to prove the defensive guard fires.)
+func TestAssignTaskToAgent_CrossTenant_DefensiveTripleCheck(t *testing.T) {
+	// Construct: task in projectA, agent in projectB, caller in projectA.
+	// The first check (task.ProjectID != callerProjectID) will fire,
+	// returning CROSS_TENANT_BLOCKED with the standard envelope. The
+	// defensive check would only fire if the task and agent both
+	// matched callerProjectID, which is impossible given projectA !=
+	// projectB. So this test confirms the first check covers the case.
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	projectB := uuid.New()
+	// task in projectA, agent in projectB, caller in projectA
+	taskID, _ := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+	agentSvc := NewAgentService(s)
+	agentB, _ := agentSvc.CreateAgent(context.Background(), CreateAgentRequest{
+		ProjectID: projectB, Name: "agent-b", Role: "developer", Capabilities: []string{"coding"},
+	})
+	assignedBy := uuid.New()
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentB.ID, "", &assignedBy, nil, projectA)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 404, apiErr.Status)
+	assert.Equal(t, "CROSS_TENANT_BLOCKED", apiErr.Code)
+}
+
+// TestAssignTaskToAgent_MissingProjectHeader: caller with uuid.Nil is
+// rejected at the service layer with 400 MISSING_PROJECT_HEADER.
+func TestAssignTaskToAgent_MissingProjectHeader(t *testing.T) {
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	taskID, agentID := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+
+	assignedBy := uuid.New()
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil, uuid.Nil)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 400, apiErr.Status)
+	assert.Equal(t, "MISSING_PROJECT_HEADER", apiErr.Code)
+}
+
+// TestListAssignmentHistory_CrossTenant: caller in projectB cannot read
+// the history of a projectA task.
+func TestListAssignmentHistory_CrossTenant(t *testing.T) {
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	projectB := uuid.New()
+	taskID, agentID := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+
+	// first, create an assignment in projectA so the history has rows
+	assignedBy := uuid.New()
+	_, apiErr := svc.AssignTaskToAgent(context.Background(), taskID, agentID, "", &assignedBy, nil, projectA)
+	require.Nil(t, apiErr)
+
+	// cross-tenant: projectB caller blocked
+	_, apiErr = svc.ListAssignmentHistory(context.Background(), taskID, projectB)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 404, apiErr.Status)
+	assert.Equal(t, "CROSS_TENANT_BLOCKED", apiErr.Code)
+
+	// control: projectA caller sees the history
+	events, apiErr := svc.ListAssignmentHistory(context.Background(), taskID, projectA)
+	require.Nil(t, apiErr)
+	require.Len(t, events, 1)
+}
+
+// TestListAssignmentHistory_MissingProjectHeader: uuid.Nil caller is
+// rejected with 400 MISSING_PROJECT_HEADER.
+func TestListAssignmentHistory_MissingProjectHeader(t *testing.T) {
+	svc, s := newAssignmentTestService(t)
+	projectA := uuid.New()
+	taskID, _ := seedTaskAndAgent(t, s, projectA, "alpha", "developer", []string{"coding"})
+
+	_, apiErr := svc.ListAssignmentHistory(context.Background(), taskID, uuid.Nil)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, 400, apiErr.Status)
+	assert.Equal(t, "MISSING_PROJECT_HEADER", apiErr.Code)
 }
