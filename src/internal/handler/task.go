@@ -50,7 +50,7 @@ type taskResponse struct {
 }
 
 func (h *TaskHandler) Create(c *gin.Context) {
-	projectID, err := uuid.Parse(c.Param("projectId"))
+	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
 		return
@@ -82,7 +82,7 @@ func (h *TaskHandler) Create(c *gin.Context) {
 }
 
 func (h *TaskHandler) List(c *gin.Context) {
-	projectID, err := uuid.Parse(c.Param("projectId"))
+	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Project ID")
 		return
