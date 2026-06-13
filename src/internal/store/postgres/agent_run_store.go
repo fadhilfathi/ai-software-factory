@@ -20,7 +20,7 @@ func (s *postgresAgentRunStore) pool() *pgxpool.Pool {
 	return s.s.pool
 }
 
-func (s *postgresAgentRunStore) Create(r *model.AgentRun) error {
+func (s *postgresAgentRunStore) Create(r *model.Execution) error {
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()
 	}
@@ -34,10 +34,10 @@ func (s *postgresAgentRunStore) Create(r *model.AgentRun) error {
 	return nil
 }
 
-func (s *postgresAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
+func (s *postgresAgentRunStore) GetByID(id uuid.UUID) (*model.Execution, error) {
 	query := `SELECT id, agent_id, task_id, status, input, output, started_at, completed_at, created_at
 		FROM agent_runs WHERE id = $1`
-	r := &model.AgentRun{}
+	r := &model.Execution{}
 	err := s.pool().QueryRow(context.Background(), query, id).Scan(
 		&r.ID, &r.AgentID, &r.TaskID, &r.Status, &r.Input, &r.Output, &r.StartedAt, &r.CompletedAt, &r.CreatedAt,
 	)
@@ -50,7 +50,7 @@ func (s *postgresAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
 	return r, nil
 }
 
-func (s *postgresAgentRunStore) List(filter store.AgentRunFilter) ([]*model.AgentRun, int, error) {
+func (s *postgresAgentRunStore) List(filter store.AgentRunFilter) ([]*model.Execution, int, error) {
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
@@ -102,9 +102,9 @@ func (s *postgresAgentRunStore) List(filter store.AgentRunFilter) ([]*model.Agen
 	}
 	defer rows.Close()
 
-	var runs []*model.AgentRun
+	var runs []*model.Execution
 	for rows.Next() {
-		r := &model.AgentRun{}
+		r := &model.Execution{}
 		if err := rows.Scan(&r.ID, &r.AgentID, &r.TaskID, &r.Status, &r.Input, &r.Output, &r.StartedAt, &r.CompletedAt, &r.CreatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan agent run: %w", err)
 		}
@@ -114,7 +114,7 @@ func (s *postgresAgentRunStore) List(filter store.AgentRunFilter) ([]*model.Agen
 	return runs, total, nil
 }
 
-func (s *postgresAgentRunStore) Update(r *model.AgentRun) error {
+func (s *postgresAgentRunStore) Update(r *model.Execution) error {
 	query := `UPDATE agent_runs SET status=$1, input=$2, output=$3, started_at=$4, completed_at=$5
 		WHERE id=$6`
 	tag, err := s.pool().Exec(context.Background(), query,

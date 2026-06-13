@@ -20,7 +20,7 @@ type memoryStore struct {
 	usersEmail  map[string]*model.User
 	projects    map[string]*model.Project
 	agents      map[string]*model.Agent
-	agentRuns   map[string]*model.AgentRun
+	agentRuns   map[string]*model.Execution
 	executions   map[string]*model.Execution
 	deliverables map[string]*model.Deliverable
 	// deliverableVersions is the TASK-406 append-only history
@@ -64,7 +64,7 @@ func NewMemoryStore() Store {
 		usersEmail:  make(map[string]*model.User),
 		projects:    make(map[string]*model.Project),
 		agents:      make(map[string]*model.Agent),
-		agentRuns:   make(map[string]*model.AgentRun),
+		agentRuns:   make(map[string]*model.Execution),
 		executions:   make(map[string]*model.Execution),
 		deliverables: make(map[string]*model.Deliverable),
 		deliverableVersions:         make(map[string]*model.DeliverableVersion),
@@ -645,7 +645,7 @@ func (s *memoryCapabilityStore) List(_ context.Context, filter model.CapabilityF
 
 type memoryAgentRunStore struct{ m *memoryStore }
 
-func (s *memoryAgentRunStore) Create(r *model.AgentRun) error {
+func (s *memoryAgentRunStore) Create(r *model.Execution) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
 	if _, exists := s.m.agentRuns[r.ID.String()]; exists {
@@ -655,7 +655,7 @@ func (s *memoryAgentRunStore) Create(r *model.AgentRun) error {
 	return nil
 }
 
-func (s *memoryAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
+func (s *memoryAgentRunStore) GetByID(id uuid.UUID) (*model.Execution, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	r, ok := s.m.agentRuns[id.String()]
@@ -665,10 +665,10 @@ func (s *memoryAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
 	return r, nil
 }
 
-func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.AgentRun, int, error) {
+func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.Execution, int, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	var filtered []*model.AgentRun
+	var filtered []*model.Execution
 	for _, r := range s.m.agentRuns {
 		if filter.AgentID != uuid.Nil && r.AgentID != filter.AgentID {
 			continue
@@ -696,7 +696,7 @@ func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.AgentRun, in
 	}
 	start := (page - 1) * limit
 	if start >= len(filtered) {
-		return []*model.AgentRun{}, total, nil
+		return []*model.Execution{}, total, nil
 	}
 	end := start + limit
 	if end > len(filtered) {
@@ -705,7 +705,7 @@ func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.AgentRun, in
 	return filtered[start:end], total, nil
 }
 
-func (s *memoryAgentRunStore) Update(r *model.AgentRun) error {
+func (s *memoryAgentRunStore) Update(r *model.Execution) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
 	if _, ok := s.m.agentRuns[r.ID.String()]; !ok {
@@ -1463,7 +1463,7 @@ func (s *memoryAuditLogStore) Create(l *model.AuditLog) error {
 // descending. The filter fields EntityType, EntityID, and UserID are optional;
 // when zero-valued they do not narrow the result set. Page and Limit fall
 // back to 1 and 20 respectively, matching the postgres implementation.
-func (s *memoryAuditLogStore) List(filter store.AuditLogFilter) ([]*model.AuditLog, int, error) {
+func (s *memoryAuditLogStore) List(filter AuditLogFilter) ([]*model.AuditLog, int, error) {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
 	logs := make([]*model.AuditLog, 0, len(s.m.auditLogs))
