@@ -29,8 +29,9 @@ type postgresExecutionStore struct {
 
 func (s *postgresExecutionStore) Create(ctx context.Context, e *model.Execution) error {
 	const query = `INSERT INTO executions
-		(task_id, agent_id, status, started_at, completed_at, error_message, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		(task_id, agent_id, status, started_at, completed_at, error_message,
+		 aion_agent_instance_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`
 
 	now := time.Now().UTC()
@@ -42,7 +43,8 @@ func (s *postgresExecutionStore) Create(ctx context.Context, e *model.Execution)
 	}
 
 	err := s.db.QueryRow(ctx, query,
-		e.TaskID, e.AgentID, e.Status, e.StartedAt, e.CompletedAt, e.ErrorMessage, e.CreatedAt, e.UpdatedAt,
+		e.TaskID, e.AgentID, e.Status, e.StartedAt, e.CompletedAt, e.ErrorMessage,
+		e.AionAgentInstanceID, e.CreatedAt, e.UpdatedAt,
 	).Scan(&e.ExecutionID)
 	if err != nil {
 		// 23505 = unique_violation. The PK on `id` is the only
@@ -61,7 +63,7 @@ func (s *postgresExecutionStore) Create(ctx context.Context, e *model.Execution)
 
 func (s *postgresExecutionStore) GetByID(ctx context.Context, id uuid.UUID) (*model.Execution, error) {
 	const query = `SELECT id, task_id, agent_id, status, started_at, completed_at,
-		error_message, created_at, updated_at
+		error_message, aion_agent_instance_id, created_at, updated_at
 		FROM executions WHERE id = $1`
 	return s.scanOne(ctx, query, id)
 }
@@ -138,7 +140,7 @@ func (s *postgresExecutionStore) List(ctx context.Context, filter model.Executio
 	args = append(args, limit+1) // +1 to detect "is there a next page?"
 
 	dataQuery := fmt.Sprintf(`SELECT id, task_id, agent_id, status, started_at, completed_at,
-		error_message, created_at, updated_at
+		error_message, aion_agent_instance_id, created_at, updated_at
 		FROM executions %s
 		ORDER BY started_at DESC NULLS LAST, id DESC
 		LIMIT $%d`, whereClause, argIdx)
@@ -193,7 +195,7 @@ func (s *postgresExecutionStore) UpdateStatus(ctx context.Context, id uuid.UUID,
 		updated_at = NOW()
 		WHERE id = $3
 		RETURNING id, task_id, agent_id, status, started_at, completed_at,
-			error_message, created_at, updated_at`
+			error_message, aion_agent_instance_id, created_at, updated_at`
 
 	var errMsgArg *string
 	if errorMessage != nil {
@@ -226,7 +228,7 @@ func (s *postgresExecutionStore) scanOneRow(row pgx.Row) (*model.Execution, erro
 	e := &model.Execution{}
 	err := row.Scan(
 		&e.ExecutionID, &e.TaskID, &e.AgentID, &e.Status, &e.StartedAt, &e.CompletedAt,
-		&e.ErrorMessage, &e.CreatedAt, &e.UpdatedAt,
+		&e.ErrorMessage, &e.AionAgentInstanceID, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -244,7 +246,7 @@ func scanExecutionRow(rows pgx.Rows) (*model.Execution, error) {
 	e := &model.Execution{}
 	err := rows.Scan(
 		&e.ExecutionID, &e.TaskID, &e.AgentID, &e.Status, &e.StartedAt, &e.CompletedAt,
-		&e.ErrorMessage, &e.CreatedAt, &e.UpdatedAt,
+		&e.ErrorMessage, &e.AionAgentInstanceID, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

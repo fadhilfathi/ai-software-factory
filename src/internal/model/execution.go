@@ -63,16 +63,26 @@ var ErrInvalidExecutionStatus = errors.New("invalid execution status")
 //
 // ErrorMessage is populated only when Status transitions to
 // ExecutionStatusFailed. It is nil for pending/running/completed rows.
+//
+// AionAgentInstanceID is the optional Aion agent-process instance
+// identifier populated by TASK-501's aion.Runtime.Spawn path. It is
+// nil for executions created via the legacy mock-goroutine path
+// (Sprint 4 default) and non-nil for executions spawned by the
+// aion.Runtime (Sprint 5 default). Callers can use it to correlate
+// the execution row with the child process described by the
+// corresponding model.Worker (Worker.PID is derived from this for
+// process-mode runtimes).
 type Execution struct {
-	ExecutionID  uuid.UUID
-	TaskID       uuid.UUID
-	AgentID      uuid.UUID
-	Status       ExecutionStatus
-	StartedAt    time.Time
-	CompletedAt  *time.Time
-	ErrorMessage *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ExecutionID         uuid.UUID
+	TaskID              uuid.UUID
+	AgentID             uuid.UUID
+	Status              ExecutionStatus
+	StartedAt           time.Time
+	CompletedAt         *time.Time
+	ErrorMessage        *string
+	AionAgentInstanceID *uuid.UUID // TASK-501; nil for legacy paths
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // ExecutionFilter is the input to ListExecutions. The zero value is a

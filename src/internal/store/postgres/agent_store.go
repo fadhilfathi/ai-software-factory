@@ -38,7 +38,7 @@ func (s *postgresAgentStore) pool() *pgxpool.Pool { return s.s.pool }
 // Centralised here so all queries project the same shape and any
 // schema change touches exactly one spot.
 const agentColumns = `id, project_id, name, role, status, capabilities,
-	last_active_at, metadata, version, retired_at, created_at, updated_at`
+	last_active_at, metadata, runtime, version, retired_at, created_at, updated_at`
 
 // scanAgent scans a single row of the agentColumns projection into a
 // model.Agent. The metadata column is read as []byte and assigned to
@@ -46,15 +46,19 @@ const agentColumns = `id, project_id, name, role, status, capabilities,
 func scanAgent(row pgx.Row) (*model.Agent, error) {
 	a := &model.Agent{}
 	var meta []byte
+	var runtime []byte
 	err := row.Scan(
 		&a.ID, &a.ProjectID, &a.Name, &a.Role, &a.Status, &a.Capabilities,
-		&a.LastActiveAt, &meta, &a.Version, &a.RetiredAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.LastActiveAt, &meta, &runtime, &a.Version, &a.RetiredAt, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	if len(meta) > 0 {
 		a.Metadata = append(json.RawMessage(nil), meta...)
+	}
+	if len(runtime) > 0 {
+		a.Runtime = append(json.RawMessage(nil), runtime...)
 	}
 	return a, nil
 }
@@ -76,11 +80,11 @@ func (s *postgresAgentStore) Create(ctx context.Context, a *model.Agent) error {
 		a.Capabilities = []string{}
 	}
 	query := `INSERT INTO agents
-		(id, project_id, name, role, status, capabilities, last_active_at, metadata, version, retired_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+		(id, project_id, name, role, status, capabilities, last_active_at, metadata, runtime, version, retired_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
 	_, err := s.pool().Exec(ctx, query,
 		a.ID, a.ProjectID, a.Name, a.Role, a.Status, a.Capabilities,
-		a.LastActiveAt, []byte(a.Metadata), a.Version, a.RetiredAt, a.CreatedAt, a.UpdatedAt)
+		a.LastActiveAt, []byte(a.Metadata), []byte(a.Runtime), a.Version, a.RetiredAt, a.CreatedAt, a.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -200,11 +204,11 @@ func (s *postgresAgentStore) Update(ctx context.Context, a *model.Agent) error {
 	a.Version++
 	query := `UPDATE agents SET
 		name = $2, role = $3, status = $4, capabilities = $5,
-		last_active_at = $6, metadata = $7, updated_at = NOW()
-		WHERE id = $1 AND version = $8 AND retired_at IS NULL`
+		last_active_at = $6, metadata = $7, runtime = $8, updated_at = NOW()
+		WHERE id = $1 AND version = $9 AND retired_at IS NULL`
 	tag, err := s.pool().Exec(ctx, query,
 		a.ID, a.Name, a.Role, a.Status, a.Capabilities,
-		a.LastActiveAt, []byte(a.Metadata), currentVersion)
+		a.LastActiveAt, []byte(a.Metadata), []byte(a.Runtime), currentVersion)
 	if err != nil {
 		return fmt.Errorf("update agent: %w", err)
 	}

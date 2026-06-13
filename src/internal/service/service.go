@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"go.uber.org/zap"
@@ -56,7 +57,7 @@ func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.
 		Deployment:   NewDeploymentService(s, log),
 		Webhook:      NewWebhookService(s, log),
 		Assignment:   NewAssignmentService(s, capSvc, log),
-		Execution:    NewExecutionService(s, log, nil), // nil cfg → DefaultExecutionServiceConfig (env-var-driven failure rate)
+		Execution:    NewExecutionService(s, log, nil, aion.NewProcessRuntime(aion.ProcessRuntimeConfig{})), // nil cfg → DefaultExecutionServiceConfig; aion.NewProcessRuntime wires the TASK-501 subprocess runtime (AION_BINARY etc. env vars read inside)
 		Deliverable:  NewDeliverableService(s, log),
 		AuditLog:     NewAuditLogService(s, log),
 		Orchestrator: orch,

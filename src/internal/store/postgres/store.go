@@ -66,6 +66,13 @@ func (s *postgresStore) Assignments() store.AssignmentStore {
 	return &postgresAssignmentStore{s: s, db: s.pool}
 }
 
+// TASK-501: Aion runtime worker record store. Sprint 5 ships an
+// in-memory fallback only; the postgres-backed implementation is
+// a Sprint 6 follow-up (additive — same Worker struct, new
+// `workers` table). Mirrors the Deployments/Webhooks pattern
+// (delegates to fallback) so the interface is satisfied today.
+func (s *postgresStore) Workers() store.WorkerStore { return s.fallback.Workers() }
+
 // WithTx opens a SQL transaction, runs the closure with a tx-scoped
 // view of the store, and commits if the closure returns nil. Any
 // non-nil return from the closure triggers a rollback. The closure

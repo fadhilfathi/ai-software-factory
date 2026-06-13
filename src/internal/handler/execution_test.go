@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
@@ -62,7 +64,7 @@ func newExecutionTestRouter(t *testing.T, withUserID string) (*gin.Engine, *serv
 		MockSleep:       func() time.Duration { return 0 },
 		MockFailureRate: 0.0,
 	}
-	svc := service.NewExecutionService(s, zap.NewNop(), cfg)
+	svc := service.NewExecutionService(s, zap.NewNop(), cfg, nil, aion.NewMockRuntime()) // TASK-501: in-process mock for handler tests
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()

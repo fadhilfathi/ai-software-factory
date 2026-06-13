@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/google/uuid"
@@ -29,7 +30,7 @@ func newExecutionTestService(t *testing.T) (*ExecutionService, store.Store) {
 		MockSleep:       func() time.Duration { return 0 },
 		MockFailureRate: 0.0,
 	}
-	svc := NewExecutionService(s, zap.NewNop(), cfg)
+	svc := NewExecutionService(s, zap.NewNop(), cfg, aion.NewMockRuntime())
 	t.Cleanup(func() {
 		// Drain in-flight goroutines so they don't leak across
 		// tests. We give them a short window; if a test has
@@ -161,8 +162,17 @@ func TestCreateExecution_MockGoroutine_CompletesSuccessfully(t *testing.T) {
 
 func TestCreateExecution_MockGoroutine_FailsWhenRateIs100(t *testing.T) {
 	svc, s := newExecutionTestService(t)
-	// Override the failure rate for this test.
-	svc.cfg.MockFailureRate = 1.0
+	// TASK-501: the legacy cfg.MockFailureRate knob is now
+	// expressed via aion.MockRuntime.SetDefaultScript. We pull
+	// the runtime out of the service via the exported (test-only)
+	// accessor pattern below. The default-script fallback means
+	// the per-spawn ExecutionID doesn't need to be known up-front.
+	svc.cfg.MockFailureRate = 1.0 // kept for documentation; no longer read by the runtime path
+	mockRT := svc.runtime.(*aion.MockRuntime)
+	mockRT.SetDefaultScript(aion.FakeScript{
+		Outcome:      aion.WorkerFailed,
+		ErrorMessage: "mock failure",
+	})
 	taskID, agentID, projectID := seedExecutionTaskAndAgent(t, s)
 
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
@@ -377,7 +387,7 @@ func TestCreateExecution_MockGoroutine_RespectsShutdown(t *testing.T) {
 		MockSleep:       func() time.Duration { return 10 * time.Second },
 		MockFailureRate: 0.0,
 	}
-	svc := NewExecutionService(s, zap.NewNop(), cfg)
+	svc := NewExecutionService(s, zap.NewNop(), cfg, aion.NewMockRuntime())
 
 	// Seed task + agent
 	task := &model.Task{

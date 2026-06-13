@@ -170,6 +170,15 @@ type Agent struct {
 	// wire. Mutated via PUT.
 	Metadata json.RawMessage `json:"metadata"`
 
+	// Runtime is the TASK-501 Aion runtime configuration for this
+	// agent. Optional on create; default is an empty object. The
+	// expected JSON shape is documented in docs/sprint5/aion-runtime-
+	// integration.md §3.1: {"model":"sonnet","provider":"anthropic",
+	// "permission_mode":"default","extra":{...}}. Distinct from
+	// Metadata so a user's "model": "claude-opus-4" metadata entry
+	// doesn't leak into the Aion spec.
+	Runtime json.RawMessage `json:"runtime,omitempty"`
+
 	// Version is the optimistic-concurrency counter. Starts at 1 on
 	// create. Bumped on every successful Update / SetCapabilities.
 	// The api-spec.md §1.4 PUT contract requires clients to send

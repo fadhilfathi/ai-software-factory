@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -64,6 +65,15 @@ type ExecutionService struct {
 	// and the test can seed it deterministically.
 	randMu sync.Mutex
 	rand   *rand.Rand
+
+	// runtime is the TASK-501 Aion runtime. When set, CreateExecution
+	// spawns the worker via runtime.Spawn and waits on the handle
+	// via runtime.Wait. When nil, CreateExecution falls back to the
+	// legacy mock goroutine (Sprint 4 placeholder). Production wires
+	// a *aion.ProcessRuntime (subprocess mode) by default; tests wire
+	// a *aion.MockRuntime (in-process). The service does not own
+	// Close; callers are expected to do so in main.go's shutdown path.
+	runtime aion.Runtime
 }
 
 // ExecutionServiceConfig is the injectable configuration for
@@ -118,10 +128,11 @@ func envFloat(name string, fallback float64) float64 {
 }
 
 // NewExecutionService constructs an ExecutionService. Passing a
-// nil cfg uses DefaultExecutionServiceConfig(). The returned
-// service owns a stop context; callers must call Shutdown() to
-// release it.
-func NewExecutionService(s store.Store, log *zap.Logger, cfg *ExecutionServiceConfig) *ExecutionService {
+// nil cfg uses DefaultExecutionServiceConfig(). Passing a nil
+// runtime falls back to the legacy mock-goroutine path (Sprint 4
+// placeholder). The returned service owns a stop context; callers
+// must call Shutdown() to release it.
+func NewExecutionService(s store.Store, log *zap.Logger, cfg *ExecutionServiceConfig, runtime aion.Runtime) *ExecutionService {
 	if cfg == nil {
 		cfg = DefaultExecutionServiceConfig()
 	}
@@ -132,29 +143,40 @@ func NewExecutionService(s store.Store, log *zap.Logger, cfg *ExecutionServiceCo
 	// Seed math/rand once for the default mock sleep. Tests
 	// that need determinism should pass a custom MockSleep.
 	return &ExecutionService{
-		store:  s,
-		log:    log,
-		cfg:    cfg,
-		stop:   ctx,
-		cancel: cancel,
-		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		store:   s,
+		log:     log,
+		cfg:     cfg,
+		stop:    ctx,
+		cancel:  cancel,
+		rand:    rand.New(rand.NewSource(time.Now().UnixNano())),
+		runtime: runtime,
 	}
 }
 
 // Shutdown cancels the service-level stop context (causing any
-// in-flight mock goroutines to exit on their next select tick)
-// and waits for them to drain. The caller's ctx bounds the wait:
-// if the ctx is cancelled before drain completes, Shutdown
-// returns ctx.Err() and leaves any still-running goroutines to
-// finish on their own.
+// in-flight workers - mock goroutines + runtime driver goroutines
+// - to exit on their next select tick) and waits for them to
+// drain. It also closes the Aion runtime if one was wired, so any
+// spawned subprocesses receive a best-effort SIGKILL through the
+// runtime's Close path. The caller's ctx bounds the wait: if the
+// ctx is cancelled before drain completes, Shutdown returns
+// ctx.Err() and leaves any still-running workers to finish on
+// their own. It is safe to call multiple times - only the first
+// call has effect. The legacy mock goroutine path (nil runtime)
+// is unaffected.
 func (s *ExecutionService) Shutdown(ctx context.Context) error {
 	s.stopOnce.Do(func() { s.cancel() })
 	done := make(chan struct{})
 	go func() { s.wg.Wait(); close(done) }()
+	var runtimeErr error
+	if s.runtime != nil {
+		runtimeErr = s.runtime.Close()
+	}
 	select {
 	case <-done:
-		return nil
+		return runtimeErr
 	case <-ctx.Done():
+		_ = runtimeErr
 		return ctx.Err()
 	}
 }
@@ -291,9 +313,73 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 	// cancelled HTTP request doesn't abort the mock
 	// simulation — the simulation is a server-side job,
 	// not a request-scoped operation.
+	if s.runtime != nil {
+		// TASK-501 runtime-driven path. Spawn the worker, persist
+		// the Worker row, and start a driveWorker goroutine that
+		// waits on the handle and drives the state machine to a
+		// terminal status. AionAgentInstanceID is recorded on the
+		// execution row so handlers/clients can correlate with
+		// Worker.PID.
+		agent, err := s.store.Agents().GetByID(ctx, agentID)
+		if err != nil {
+			return nil, fmt.Errorf("get agent for runtime spawn: %w", err)
+		}
+		spec := aion.WorkerSpec{
+			ExecutionID:    exec.ExecutionID,
+			TaskID:         taskID,
+			AgentID:        agentID,
+			ProjectID:      callerProjectID,
+			Model:          modelOrDefault(agent.Runtime, s.log),
+			Provider:       "anthropic",
+			PermissionMode: "default",
+			Attempt:        1,
+		}
+		handle, err := s.runtime.Spawn(ctx, spec)
+		if err != nil {
+			return nil, fmt.Errorf("aion runtime spawn: %w", err)
+		}
+		instanceID := uuid.New()
+		exec.AionAgentInstanceID = &instanceID
+		if err := s.store.Executions().UpdateStatus(ctx, exec.ExecutionID, exec.Status, exec.ErrorMessage); err != nil {
+			// Best-effort cancel the spawn we just made before
+			// returning the error to the caller.
+			_ = s.runtime.Cancel(ctx, handle)
+			return nil, fmt.Errorf("update execution aion instance id: %w", err)
+		}
+		// Record the worker row. PID is only available for the
+		// process runtime; the mock runtime leaves it zero.
+		var pid *int
+		if h, ok := handle.(interface{ PID() int }); ok {
+			if p := h.PID(); p > 0 {
+				pid = &p
+			}
+		}
+		worker := &model.Worker{
+			ID:             uuid.New(),
+			ExecutionID:    exec.ExecutionID,
+			AgentID:        agentID,
+			ProjectID:      callerProjectID,
+			Handle:         string(handle),
+			PID:            pid,
+			Status:         model.WorkerStatusPending,
+			Attempt:        1,
+			StartedAt:      ptrTime(time.Now().UTC()),
+			AionInstanceID: &instanceID,
+		}
+		if _, err := s.store.Workers().Create(ctx, worker); err != nil {
+			_ = s.runtime.Cancel(ctx, handle)
+			return nil, fmt.Errorf("create worker row: %w", err)
+		}
+		s.wg.Add(1)
+		go s.driveWorker(worker.ID, handle, exec.ExecutionID, callerProjectID)
+		return exec, nil
+	}
+	// Legacy mock-goroutine path (Sprint 4 placeholder). Used
+	// only when no runtime is wired - i.e. tests that haven't
+	// been updated to use aion.MockRuntime. Production main.go
+	// always passes a runtime.
 	s.wg.Add(1)
-	go s.mockExecution(exec.ExecutionID)
-
+	go s.mockExecution(exec.ExecutionID, callerProjectID)
 	return exec, nil
 }
 
@@ -454,3 +540,146 @@ func (s *ExecutionService) UpdateExecutionStatus(ctx context.Context, id uuid.UU
 func (s *ExecutionService) IsValidExecutionStatus(st model.ExecutionStatus) bool {
 	return model.IsValidExecutionStatus(st)
 }
+
+// driveWorker is the TASK-501 runtime-driven worker driver. It
+// blocks on runtime.Wait for the spawned worker's handle, then
+// translates the WorkerResult into an execution status and
+// drives the state machine via TransitionTo. The driver uses
+// context.Background() for the Wait call (NOT the request ctx)
+// because the request's ctx will be cancelled as soon as the
+// handler returns; the worker must continue running. Shutdown's
+// stop-cancel path is what finally tears the driver down.
+
+// Mapping WorkerStatus -> ExecutionStatus:
+//   WorkerCompleted  -> ExecutionStatusCompleted
+//   WorkerFailed     -> ExecutionStatusFailed
+//   WorkerCancelled  -> ExecutionStatusFailed (with cancel note)
+//   default/unknown  -> ExecutionStatusFailed (defensive)
+
+// A driver error (e.g. ctx cancelled, handle unknown) is
+// recorded as ExecutionStatusFailed with the error message so
+// operators have something to grep for in the bus + log.
+func (s *ExecutionService) driveWorker(workerID uuid.UUID, handle aion.WorkerHandle, execID, callerProjectID uuid.UUID) {
+	defer s.wg.Done()
+
+	// Update the worker row to running.
+	if w, gerr := s.store.Workers().GetByID(context.Background(), workerID); gerr == nil && w != nil {
+		w.Status = model.WorkerStatusRunning
+		_ = s.store.Workers().Update(context.Background(), w)
+	}
+
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	defer cancelWait()
+	// Forward stop signal to the wait ctx.
+	go func() {
+		select {
+		case <-s.stop.Done():
+			cancelWait()
+		case <-waitCtx.Done():
+		}
+	}()
+
+	result, err := s.runtime.Wait(waitCtx, handle)
+
+	// Translate result -> ExecutionStatus, then drive the state
+	// machine. Use context.Background() (not waitCtx) for the
+	// TransitionTo call so a cancelled waitCtx doesn't leave the
+	// row stuck in `pending` or `running`.
+	driveCtx := context.Background()
+	var target model.ExecutionStatus
+	var errMsg *string
+	switch {
+	case err != nil:
+		target = model.ExecutionStatusFailed
+		msg := "runtime wait: " + err.Error()
+		errMsg = &msg
+		s.log.Error("aion runtime wait failed", zap.String("execution_id", execID.String()), zap.Error(err))
+	case result.Status == aion.WorkerCompleted:
+		target = model.ExecutionStatusCompleted
+	case result.Status == aion.WorkerFailed:
+		target = model.ExecutionStatusFailed
+		if result.ErrorMessage != "" {
+			msg := result.ErrorMessage
+			errMsg = &msg
+		}
+	case result.Status == aion.WorkerCancelled:
+		target = model.ExecutionStatusFailed
+		msg := "worker cancelled: " + result.ErrorMessage
+		errMsg = &msg
+	default:
+		target = model.ExecutionStatusFailed
+		msg := "worker returned unknown status: " + string(result.Status)
+		errMsg = &msg
+	}
+
+	// Update the worker row to the terminal status.
+	if w, gerr := s.store.Workers().GetByID(driveCtx, workerID); gerr == nil && w != nil {
+		now := time.Now().UTC()
+		w.Status = workerStatusFromExecutionStatus(target)
+		w.CompletedAt = &now
+		if errMsg != nil {
+			msg := *errMsg
+			w.ErrorMessage = msg
+		}
+		if result.Status == aion.WorkerCompleted && len(result.Result) > 0 {
+			w.Result = result.Result
+		}
+		_ = s.store.Workers().Update(driveCtx, w)
+	}
+
+	if _, terr := s.TransitionTo(driveCtx, execID, target, errMsg, callerProjectID); terr != nil {
+		s.log.Error("driveWorker TransitionTo failed",
+			zap.String("execution_id", execID.String()),
+			zap.String("target", string(target)),
+			zap.Error(terr))
+	}
+}
+
+// workerStatusFromExecutionStatus translates the execution state
+// machine's terminal status to the worker's. Both are terminal
+// at this point so the mapping is one-to-one.
+func workerStatusFromExecutionStatus(status model.ExecutionStatus) model.WorkerStatus {
+	switch status {
+	case model.ExecutionStatusCompleted:
+		return model.WorkerCompleted
+	case model.ExecutionStatusFailed:
+		return model.WorkerFailed
+	default:
+		return model.WorkerFailed
+	}
+}
+
+// modelOrDefault extracts a model identifier from a free-form
+// agent metadata blob, falling back to a default string when
+// nothing is set. The metadata format is intentionally loose
+// (json.RawMessage); we accept either a top-level "model" string
+// or a "runtime" object with a "model" field. Anything we can't
+// parse falls back to a constant so the spec.Validate() check
+// inside the runtime doesn't reject it for an empty model.
+func modelOrDefault(raw json.RawMessage, log *zap.Logger) string {
+	defaultModel := "sonnet"
+	if len(raw) == 0 {
+		return defaultModel
+	}
+	var m struct {
+		Model   string `json:"model"`
+		Runtime *struct {
+			Model string `json:"model"`
+		} `json:"runtime"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return defaultModel
+	}
+	if m.Model != "" {
+		return m.Model
+	}
+	if m.Runtime != nil && m.Runtime.Model != "" {
+		return m.Runtime.Model
+	}
+	return defaultModel
+}
+
+// ptrTime returns a pointer to the given time.Time. Used to
+// populate *time.Time fields on model.Worker.
+func ptrTime(t time.Time) *time.Time { return &t }
+
