@@ -1700,10 +1700,11 @@ func (s *memoryWorkerStore) Create(ctx context.Context, w *model.Worker) (*model
 		w.ID = uuid.New()
 	}
 	if w.StartedAt.IsZero() {
-		w.StartedAt = time.Now().UTC()
+		now := time.Now().UTC()
+		w.StartedAt = &now
 	}
 	if w.Status == "" {
-		w.Status = model.WorkerStatusPending
+		w.Status = model.WorkerPending
 	}
 	if !model.IsValidWorkerStatus(w.Status) {
 		return nil, ErrInvalidInput

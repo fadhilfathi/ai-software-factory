@@ -37,8 +37,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // ProcessRuntimeConfig is the configuration for ProcessRuntime.
