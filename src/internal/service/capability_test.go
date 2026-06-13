@@ -302,14 +302,14 @@ func (m *mockCapabilityStore) Agents() store.AgentStore { return m.agents }
 
 type mockCapabilityAgentStore struct {
 	store.AgentStore
-	grants     map[uuid.UUID][]*model.AgentCapability
+	grants     map[uuid.UUID][]*model.AgentCapabilityView
 	errOnRead  error
 	notFound   bool
 	readCalled int
 	lastAgent  uuid.UUID
 }
 
-func (m *mockCapabilityAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapability, error) {
+func (m *mockCapabilityAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapabilityView, error) {
 	m.readCalled++
 	m.lastAgent = agentID
 	if m.notFound {
@@ -321,18 +321,18 @@ func (m *mockCapabilityAgentStore) ListCapabilitiesByAgent(ctx context.Context, 
 	return m.grants[agentID], nil
 }
 
-func newCapAgentStore(grants map[uuid.UUID][]*model.AgentCapability) *mockCapabilityAgentStore {
+func newCapAgentStore(grants map[uuid.UUID][]*model.AgentCapabilityView) *mockCapabilityAgentStore {
 	return &mockCapabilityAgentStore{grants: grants}
 }
 
-func newMockCapStore(grants map[uuid.UUID][]*model.AgentCapability) *mockCapabilityStore {
+func newMockCapStore(grants map[uuid.UUID][]*model.AgentCapabilityView) *mockCapabilityStore {
 	agents := newCapAgentStore(grants)
 	return &mockCapabilityStore{agents: agents}
 }
 
 func TestValidateAgentHasCapabilities_AllPresent(t *testing.T) {
 	agentID := uuid.New()
-	grants := map[uuid.UUID][]*model.AgentCapability{
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
 		agentID: {
 			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
 			{Name: "testing", Category: "testing", GrantedAt: fixedGrantedAt},
@@ -345,7 +345,7 @@ func TestValidateAgentHasCapabilities_AllPresent(t *testing.T) {
 
 func TestValidateAgentHasCapabilities_OneMissing(t *testing.T) {
 	agentID := uuid.New()
-	grants := map[uuid.UUID][]*model.AgentCapability{
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
 		agentID: {
 			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
 		},
@@ -374,7 +374,7 @@ func TestValidateAgentHasCapabilities_OneMissing(t *testing.T) {
 
 func TestValidateAgentHasCapabilities_EmptyList(t *testing.T) {
 	agentID := uuid.New()
-	grants := map[uuid.UUID][]*model.AgentCapability{
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
 		agentID: {
 			{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt},
 		},
@@ -430,7 +430,7 @@ func TestValidateAgentHasCapabilities_PassesContext(t *testing.T) {
 	// to the store call (defensive — guards against future
 	// refactors accidentally dropping it).
 	agentID := uuid.New()
-	grants := map[uuid.UUID][]*model.AgentCapability{
+	grants := map[uuid.UUID][]*model.AgentCapabilityView{
 		agentID: {{Name: "coding", Category: "coding", GrantedAt: fixedGrantedAt}},
 	}
 	agents := newCapAgentStore(grants)

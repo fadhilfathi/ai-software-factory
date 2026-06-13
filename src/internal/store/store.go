@@ -91,7 +91,7 @@ type AgentStore interface {
 	// ListCapabilitiesByAgent returns the agent's granted
 	// capabilities with proficiency/granted_at metadata. Mirrors
 	// api-spec.md §1.6.
-	ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapability, error)
+	ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapabilityView, error)
 }
 
 // CapabilityStore defines persistence operations for the capabilities

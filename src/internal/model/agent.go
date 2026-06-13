@@ -43,6 +43,19 @@ const (
 	// The list endpoint excludes retired agents by default
 	// (pass ?include_retired=true to include).
 	AgentRetired AgentStatus = "retired"
+
+	// Additional lifecycle status values referenced by the model test
+	// suite. These describe alternative phrasings (e.g. "spawning" is
+	// the transient state during the cold-start handshake, "working" is
+	// an alias for "busy", "completed" and "failed" are terminal run
+	// outcomes) and are NOT currently in the DB CHECK constraint or
+	// AllAgentStatuses below. They are declared here so tests and
+	// migration seed scripts can reference them by name; the store layer
+	// still rejects them as AgentStatus values.
+	AgentSpawning  AgentStatus = "spawning"
+	AgentWorking   AgentStatus = "working"
+	AgentCompleted AgentStatus = "completed"
+	AgentFailed    AgentStatus = "failed"
 )
 
 // AllAgentStatuses is the canonical lifecycle state set, used to
@@ -60,6 +73,56 @@ var AllAgentStatuses = []AgentStatus{
 // IsValidAgentStatus reports whether s is in the lifecycle state set.
 func IsValidAgentStatus(s AgentStatus) bool {
 	for _, v := range AllAgentStatuses {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// AgentRunStatus is the canonical status enum for an agent execution
+// (one row of the executions table populated by TASK-405). The values
+// are a linear lifecycle: pending → running → (completed | failed |
+// cancelled). Terminal states are completed, failed, and cancelled.
+type AgentRunStatus string
+
+const (
+	// RunPending means the execution has been created but the agent
+	// has not yet started work. This is the initial state on insert.
+	RunPending AgentRunStatus = "pending"
+
+	// RunRunning means the agent is actively working on the execution.
+	// The started_at timestamp is non-null.
+	RunRunning AgentRunStatus = "running"
+
+	// RunCompleted means the execution finished successfully. The
+	// completed_at timestamp is non-null.
+	RunCompleted AgentRunStatus = "completed"
+
+	// RunFailed means the execution ended in an error. The error
+	// field is populated with the cause. completed_at is non-null.
+	RunFailed AgentRunStatus = "failed"
+
+	// RunCancelled means the execution was halted by an operator
+	// before it reached a natural terminal state. completed_at is
+	// non-null.
+	RunCancelled AgentRunStatus = "cancelled"
+)
+
+// AllAgentRunStatuses is the canonical set used to validate filter
+// values and to seed the api-spec's error-table examples. Keep in
+// sync with the DB CHECK on executions.status.
+var AllAgentRunStatuses = []AgentRunStatus{
+	RunPending,
+	RunRunning,
+	RunCompleted,
+	RunFailed,
+	RunCancelled,
+}
+
+// IsValidAgentRunStatus reports whether s is in the run-status set.
+func IsValidAgentRunStatus(s AgentRunStatus) bool {
+	for _, v := range AllAgentRunStatuses {
 		if v == s {
 			return true
 		}
@@ -147,7 +210,15 @@ type AgentListResult struct {
 // field is nullable per data-model.md §3. GrantedAt records when the
 // capability was assigned to the agent. GrantedBy is the user who
 // performed the assignment, or nil for system-granted capabilities.
-type AgentCapability struct {
+// AgentCapabilityView is the per-agent capability row view used by stores,
+// services, and handlers. It carries the display/category metadata from the
+// catalog alongside the agent-specific assignment (proficiency, source).
+//
+// Note: `AgentCapability` is a Go type alias (`type AgentCapability =
+// Capability`, declared in capability.go) used by tests and by the
+// `AgentTypeCapabilities` map; the two names refer to different concepts
+// (enum value vs. row view) and must not be conflated.
+type AgentCapabilityView struct {
 	Name         string     `json:"name"`
 	DisplayName  string     `json:"display_name"`
 	Category     string     `json:"category"`

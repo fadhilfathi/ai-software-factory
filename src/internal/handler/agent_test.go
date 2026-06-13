@@ -65,12 +65,12 @@ func (m *mockAgentService) RetireAgent(ctx context.Context, id uuid.UUID, force 
 	}
 	return args.Get(0).(*Error)
 }
-func (m *mockAgentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapability, *Error) {
+func (m *mockAgentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Get(1).(*Error)
 	}
-	return args.Get(0).([]*model.AgentCapability), args.Get(1).(*Error)
+	return args.Get(0).([]*model.AgentCapabilityView), args.Get(1).(*Error)
 }
 func (m *mockAgentService) ListCapabilities(ctx context.Context, req service.ListCapabilitiesRequest) (*service.ListCapabilitiesResult, *Error) {
 	args := m.Called(ctx, req)

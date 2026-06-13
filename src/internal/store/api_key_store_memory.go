@@ -4,11 +4,17 @@ package store
 // APIKeyStore. Production-grade persistence (Postgres-backed) is deferred to
 // a follow-up sprint task — see the TODO at the bottom of this file.
 //
-// This file lives under `store/memory/` to follow the same layout as the
-// `store/postgres/` subpackage. It is intentionally self-contained (its
-// own mutex, its own map) so it can be wired into the auth service
-// without taking a dependency on the main `memoryStore` struct or
-// requiring a new accessor on the top-level Store interface.
+// This file lives in the top-level `store` package (not `store/memory/`)
+// because the APIKeyStore interface, the auth service, and cmd/main.go
+// all resolve `NewMemoryAPIKeyStore` via the `store` import path. Earlier
+// this file was placed under `store/memory/` and declared `package store`,
+// which placed it in a *different* package (import path `store/memory`)
+// from the caller's perspective — making the APIKeyStore interface and
+// the NewMemoryAPIKeyStore function invisible to each other. Moving the
+// file up a directory fixes the symbol-resolution failure. It is still
+// self-contained (its own mutex, its own map) so it can be wired into the
+// auth service without taking a dependency on the main `memoryStore`
+// struct or requiring a new accessor on the top-level Store interface.
 
 import (
 	"context"

@@ -36,7 +36,7 @@ type AgentService interface {
 	ListAgents(ctx context.Context, req ListAgentsRequest) (*ListAgentsResult, *Error)
 	UpdateAgent(ctx context.Context, id uuid.UUID, req UpdateAgentRequest) (*model.Agent, *Error)
 	RetireAgent(ctx context.Context, id uuid.UUID, force bool) *Error
-	ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapability, *Error)
+	ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error)
 	ListCapabilities(ctx context.Context, req ListCapabilitiesRequest) (*ListCapabilitiesResult, *Error)
 }
 
@@ -229,9 +229,9 @@ func (s *agentService) ListAgents(ctx context.Context, req ListAgentsRequest) (*
 }
 
 // ListAgentCapabilities is the per-agent read. We return
-// []model.AgentCapability directly to keep the handler mapping
+// []model.AgentCapabilityView directly to keep the handler mapping
 // trivial.
-func (s *agentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapability, *Error) {
+func (s *agentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
 	caps, err := s.store.Agents().ListCapabilitiesByAgent(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Agent not found")

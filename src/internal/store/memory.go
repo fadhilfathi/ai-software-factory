@@ -529,21 +529,21 @@ func (s *memoryAgentStore) SetCapabilities(_ context.Context, agentID uuid.UUID,
 	return nil
 }
 
-func (s *memoryAgentStore) ListCapabilitiesByAgent(_ context.Context, agentID uuid.UUID) ([]*model.AgentCapability, error) {
+func (s *memoryAgentStore) ListCapabilitiesByAgent(_ context.Context, agentID uuid.UUID) ([]*model.AgentCapabilityView, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	a, ok := s.m.agents[agentID.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
-	out := make([]*model.AgentCapability, 0, len(a.Capabilities))
+	out := make([]*model.AgentCapabilityView, 0, len(a.Capabilities))
 	for _, name := range a.Capabilities {
 		// The memory store does not carry proficiency / granted_at
 		// separately from the cache; default to 0 / now. The
 		// Postgres impl will join agent_capabilities and surface
 		// the real values.
 		zero := 0
-		out = append(out, &model.AgentCapability{
+		out = append(out, &model.AgentCapabilityView{
 			Name:        name,
 			DisplayName: name,
 			Category:    "",
@@ -1459,7 +1459,45 @@ func (s *memoryAuditLogStore) Create(l *model.AuditLog) error {
 	return nil
 }
 
-	return filtered[start:end], total, nil
+// List returns a filtered, paginated slice of audit logs sorted by CreatedAt
+// descending. The filter fields EntityType, EntityID, and UserID are optional;
+// when zero-valued they do not narrow the result set. Page and Limit fall
+// back to 1 and 20 respectively, matching the postgres implementation.
+func (s *memoryAuditLogStore) List(filter store.AuditLogFilter) ([]*model.AuditLog, int, error) {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	logs := make([]*model.AuditLog, 0, len(s.m.auditLogs))
+	for _, l := range s.m.auditLogs {
+		if filter.EntityType != "" && l.EntityType != filter.EntityType {
+			continue
+		}
+		if filter.EntityID != uuid.Nil && l.EntityID != filter.EntityID {
+			continue
+		}
+		if filter.UserID != uuid.Nil && (l.UserID == nil || *l.UserID != filter.UserID) {
+			continue
+		}
+		logs = append(logs, l)
+	}
+	sort.Slice(logs, func(i, j int) bool { return logs[i].CreatedAt.After(logs[j].CreatedAt) })
+	total := len(logs)
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	limit := filter.Limit
+	if limit < 1 {
+		limit = 20
+	}
+	start := (page - 1) * limit
+	end := start + limit
+	if start >= total {
+		return []*model.AuditLog{}, total, nil
+	}
+	if end > total {
+		end = total
+	}
+	return logs[start:end], total, nil
 }
 
 // --- Assignment Event Store (TASK-404) -------------------------------

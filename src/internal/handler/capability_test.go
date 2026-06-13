@@ -74,7 +74,7 @@ func TestCapabilityHandler_ListAgentCapabilities_Success(t *testing.T) {
 	prof := 7
 	grantedBy := uuid.New()
 	m.On("ListAgentCapabilities", mock.Anything, agentID).Return(
-		[]*model.AgentCapability{
+		[]*model.AgentCapabilityView{
 			{Name: "coding", DisplayName: "Coding", Category: "coding",
 				Proficiency: &prof, GrantedAt: now, GrantedBy: &grantedBy},
 			{Name: "testing", DisplayName: "Testing", Category: "testing",
@@ -112,7 +112,7 @@ func TestCapabilityHandler_ListAgentCapabilities_NotFound(t *testing.T) {
 	projectID := uuid.New()
 
 	m.On("ListAgentCapabilities", mock.Anything, agentID).Return(
-		([]*model.AgentCapability)(nil),
+		([]*model.AgentCapabilityView)(nil),
 		&service.Error{Status: 404, Code: "NOT_FOUND", Message: "Agent not found"})
 
 	w := doCapabilityRequest(r, http.MethodGet, "/v1/agents/"+agentID.String()+"/capabilities", projectID.String())

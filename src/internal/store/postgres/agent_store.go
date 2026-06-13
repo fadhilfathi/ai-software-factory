@@ -301,7 +301,7 @@ func (s *postgresAgentStore) SetCapabilities(ctx context.Context, agentID uuid.U
 // ListCapabilitiesByAgent returns the agent's granted capabilities
 // with proficiency / granted_at / display_name / category from the
 // joined rows. The api-spec.md §1.6 response shape.
-func (s *postgresAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapability, error) {
+func (s *postgresAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.AgentCapabilityView, error) {
 	query := `SELECT c.name, c.display_name, c.category, ac.proficiency, ac.granted_at
 		FROM agent_capabilities ac
 		JOIN capabilities c ON c.id = ac.capability_id
@@ -313,9 +313,9 @@ func (s *postgresAgentStore) ListCapabilitiesByAgent(ctx context.Context, agentI
 	}
 	defer rows.Close()
 
-	out := make([]*model.AgentCapability, 0, 8)
+	out := make([]*model.AgentCapabilityView, 0, 8)
 	for rows.Next() {
-		var ac model.AgentCapability
+		var ac model.AgentCapabilityView
 		if err := rows.Scan(&ac.Name, &ac.DisplayName, &ac.Category, &ac.Proficiency, &ac.GrantedAt); err != nil {
 			return nil, fmt.Errorf("scan agent capability: %w", err)
 		}
