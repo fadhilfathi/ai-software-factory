@@ -42,14 +42,11 @@ func main() {
 
 	var st store.Store
 	if dbHost := os.Getenv("DB_HOST"); dbHost != "" {
-		dbCfg := db.Config{
-			Host:     dbHost,
-			Port:     getEnvOrDefault("DB_PORT", "5432"),
-			User:     getEnvOrDefault("DB_USER", "postgres"),
-			Password: getEnvOrDefault("DB_PASSWORD", "postgres"),
-			DBName:   getEnvOrDefault("DB_NAME", "ai_factory"),
-			SSLMode:  getEnvOrDefault("DB_SSLMODE", "disable"),
-		}
+		// TASK-512 follow-up: use DefaultConfig() as base so MaxConns/MinConns/timeouts
+		// get sensible defaults (Go zero values would have pgxpool reject with
+		// "MaxSize must be >= 1"). Override Host last so DB_HOST wins.
+		dbCfg := db.DefaultConfig()
+		dbCfg.Host = dbHost
 
 		pool, err := db.Connect(context.Background(), dbCfg)
 		if err != nil {
