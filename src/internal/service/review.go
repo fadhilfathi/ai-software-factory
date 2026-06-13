@@ -145,6 +145,7 @@ func (s *ReviewService) processReview(ctx context.Context, review *model.Review)
 
 // GetReview returns a review by ID.
 func (s *ReviewService) GetReview(id string) (*model.Review, *Error) {
+	errs := &validation.Errors{}
 	uID, err := uuid.Parse(id)
 	if err != nil {
 		errs.Add("id", "Invalid Review ID format")

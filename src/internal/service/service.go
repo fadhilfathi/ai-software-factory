@@ -11,7 +11,7 @@ type Services struct {
 	Auth         AuthService
 	User         *UserService
 	Project      *ProjectService
-	Agent        *AgentService
+	Agent        AgentService
 	Task         *TaskService
 	Code         *CodeService
 	Review       *ReviewService
