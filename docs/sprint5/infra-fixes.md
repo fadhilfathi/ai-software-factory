@@ -143,3 +143,68 @@ whose scope was the buildx `cache-to` problem only):
 - Closeout commit: `ebeba6b32a0c03ca5ab2095264eb46dd40264268`
 - `docker buildx` cache backends: https://docs.docker.com/go/build-cache-backends/
 - `docker/setup-buildx-action`: https://github.com/docker/setup-buildx-action
+
+## Sprint 5 validation (TASK-512)
+
+Added to the api service in `docker-compose.yml` (carryover from TASK-430 + Sprint 5 additions):
+
+```yaml
+# TASK-430 (carryover): JWT secret must be set at runtime.
+JWT_SECRET:       ${JWT_SECRET:?JWT_SECRET must be set (see .env.example)}
+# Sprint 5: Aion Agent Runtime (TASK-501).
+AION_BINARY:           ${AION_BINARY:-/usr/local/bin/aion}
+AION_MODEL:            ${AION_MODEL:-MiniMax-M3}
+AION_PROVIDER:         ${AION_PROVIDER:-aionrs}
+AION_PERMISSION_MODE:  ${AION_PERMISSION_MODE:-YOLO}
+AION_MAX_CONCURRENT:   ${AION_MAX_CONCURRENT:-4}
+AION_WAIT_TIMEOUT:     ${AION_WAIT_TIMEOUT:-300}
+AION_E2E:              ${AION_E2E:-0}
+# Sprint 5: Agent runtime mode (TASK-512 / security-01 C1).
+AGENT_RUNTIME:        ${AGENT_RUNTIME:-aion}
+AGENT_WORKER_SANDBOX: ${AGENT_WORKER_SANDBOX:-in-process}
+AGENT_WORKER_RESTART: ${AGENT_WORKER_RESTART:-kill-in-flight}
+```
+
+### Validation matrix (target state for Sprint 5 closeout)
+
+| Step | Command | Expected | Sprint 5 status |
+|---|---|---|---|
+| 1. Compose config | `docker compose config` | Exit 0, no warnings | TBD (CI gate step 9) |
+| 2. Stack up | `docker compose up -d` | All services healthy | TBD (CI gate step 10) |
+| 3. API healthz | `curl -fsS http://localhost:8080/v1/healthz` | 200 OK | TBD (CI gate step 12) |
+| 4. Aion worker spawn | `docker compose exec api aion spawn --model MiniMax-M3 --provider aionrs` | Exit 0, agent PID tracked | DEFERRED to TASK-507 (Aion CLI spawn) |
+
+### Worker blast radius (security-01 C1)
+
+`AGENT_WORKER_SANDBOX=in-process` is **ENFORCED** for Sprint 5. The Aion worker runs inside the API process and is therefore fully trusted with the host capabilities of the api container. The threat model (security-01 §0.5 C1) is documented in `docs/sprint5/security-review.md`. Sprint 6 follow-up: move the worker to a sidecar with restricted syscalls (seccomp profile + drop CAP_SYS_ADMIN).
+
+### Sprint 4 carryovers retired
+
+The following Sprint 4 sandbox tuning knobs (runc-based) were removed in the Sprint 5 rewrite:
+
+- `AGENT_MEMORY_MB`
+- `AGENT_CPU_LIMIT`
+- `AGENT_RUNTIME=runc` (replaced with `=aion`)
+
+These do not apply to the in-process Aion worker model.
+
+### Files changed in TASK-512
+
+- `docker-compose.yml`
+  - Added `JWT_SECRET` (carryover from TASK-430, uses `${VAR:?msg}` to fail fast at startup if unset)
+  - Added 7 `AION_*` primary vars (TASK-501 compat)
+  - Added 3 `AGENT_*` runtime mode vars (Lead brief / security-01 C1)
+- `.env.example`
+  - Replaced `# --- Agent Sandbox ---` section with `# --- Agent Runtime (Sprint 5) ---`
+  - Removed stale `AGENT_MEMORY_MB` / `AGENT_CPU_LIMIT` / `AGENT_RUNTIME=runc`
+  - Added the same env-var set with the same defaults and an explanation per var
+- `docs/sprint5/infra-fixes.md` (this file)
+  - Added the "Sprint 5 validation" section (above)
+
+### NO COMMIT (TASK-512 work-in-progress)
+
+Per §3 rule 7 of the sprint brief, the TASK-512 changes are left uncommitted on the `devops01/sprint5-task-512` branch. DevOps-01 (closeout owner) will fold them into the `feat(sprint-5)` closeout commit once:
+
+1. The Sprint Quality Gate on `ci.yml` and `sprint-quality-gate.yml` is green (Lead's Rule 5).
+2. Security-01 has signed off on the threat model update.
+3. Tester-01 has run the integration test pack against the new env-var set.

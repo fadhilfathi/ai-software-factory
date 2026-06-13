@@ -71,6 +71,30 @@ services:
       DB_NAME:          ${POSTGRES_DB:-project}
       REDIS_HOST:       redis
       REDIS_PORT:       ${REDIS_PORT:-6379}
+      # TASK-430 (carryover): JWT secret must be set at runtime or
+      # config.Load() panics. The ${VAR:?msg} form forces a startup
+      # error if the operator forgot to set it.
+      JWT_SECRET:       ${JWT_SECRET:?JWT_SECRET must be set (see .env.example)}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      # Sprint 5: Aion Agent Runtime (TASK-501).
+      # In-process mode is the default for Sprint 5 (security-01 C1
+      # ENFORCED). Subprocess mode is gated behind AION_E2E=1 and is
+      # reserved for CI integration tests (TASK-510).
+      AION_BINARY:           ${AION_BINARY:-/usr/local/bin/aion}
+      AION_MODEL:            ${AION_MODEL:-MiniMax-M3}
+      AION_PROVIDER:         ${AION_PROVIDER:-aionrs}
+      AION_PERMISSION_MODE:  ${AION_PERMISSION_MODE:-YOLO}
+      AION_MAX_CONCURRENT:   ${AION_MAX_CONCURRENT:-4}
+      AION_WAIT_TIMEOUT:     ${AION_WAIT_TIMEOUT:-300}
+      AION_E2E:              ${AION_E2E:-0}
+      # Sprint 5: Agent runtime mode (TASK-512 / security-01 C1).
+      #   AGENT_RUNTIME         = aion is the only supported value in Sprint 5.
+      #   AGENT_WORKER_SANDBOX  = in-process is ENFORCED (security-01 §0.5 C1).
+      #   AGENT_WORKER_RESTART  = kill-in-flight = terminate in-flight
+      #                           workers and start fresh on next dispatch.
+      AGENT_RUNTIME:        ${AGENT_RUNTIME:-aion}
+      AGENT_WORKER_SANDBOX: ${AGENT_WORKER_SANDBOX:-in-process}
+      AGENT_WORKER_RESTART: ${AGENT_WORKER_RESTART:-kill-in-flight}
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
