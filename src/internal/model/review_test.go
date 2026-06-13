@@ -48,11 +48,11 @@ func TestReviewIssueWithoutSuggestion(t *testing.T) {
 
 func TestReviewMetricsStruct(t *testing.T) {
 	metrics := ReviewMetrics{
-		Complexity:   "moderate",
+		Complexity:   5,
 		TestCoverage: 85.5,
 		Duplications: 3,
 	}
-	assert.Equal(t, "moderate", metrics.Complexity)
+	assert.Equal(t, 5, metrics.Complexity)
 	assert.Equal(t, 85.5, metrics.TestCoverage)
 	assert.Equal(t, 3, metrics.Duplications)
 }

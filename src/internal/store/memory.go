@@ -1537,7 +1537,7 @@ func (s *memoryAssignmentStore) Create(ctx context.Context, a *model.Assignment)
 
 	// Enforce "one active per task" invariant. Mirrors the DB
 	// partial unique index uq_assignments_one_active_per_task.
-	if existing, ok := s.m.activeAssignmentByTask[a.TaskID.String()]; ok {
+	if _, ok := s.m.activeAssignmentByTask[a.TaskID.String()]; ok {
 		return nil, ErrAlreadyExists
 	}
 

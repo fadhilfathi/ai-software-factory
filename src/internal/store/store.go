@@ -13,6 +13,7 @@ var (
 	ErrNotFound      = errors.New("not found")
 	ErrAlreadyExists = errors.New("already exists")
 	ErrConflict      = errors.New("conflict")
+	ErrInvalidInput  = errors.New("invalid input")
 )
 
 // UserStore defines persistence operations for users.
