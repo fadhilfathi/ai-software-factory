@@ -41,8 +41,8 @@ func (m *mockAgentService) CreateAgent(ctx context.Context, req service.CreateAg
 	}
 	return args.Get(0).(*model.Agent), args.Get(1).(*Error)
 }
-func (m *mockAgentService) GetAgent(ctx context.Context, id uuid.UUID) (*model.Agent, *Error) {
-	args := m.Called(ctx, id)
+func (m *mockAgentService) GetAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) (*model.Agent, *Error) {
+	args := m.Called(ctx, id, callerProjectID)
 	if args.Get(0) == nil {
 		return nil, args.Get(1).(*Error)
 	}
@@ -55,22 +55,22 @@ func (m *mockAgentService) ListAgents(ctx context.Context, req service.ListAgent
 	}
 	return args.Get(0).(*service.ListAgentsResult), args.Get(1).(*Error)
 }
-func (m *mockAgentService) UpdateAgent(ctx context.Context, id uuid.UUID, req service.UpdateAgentRequest) (*model.Agent, *Error) {
-	args := m.Called(ctx, id, req)
+func (m *mockAgentService) UpdateAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, req service.UpdateAgentRequest) (*model.Agent, *Error) {
+	args := m.Called(ctx, id, callerProjectID, req)
 	if args.Get(0) == nil {
 		return nil, args.Get(1).(*Error)
 	}
 	return args.Get(0).(*model.Agent), args.Get(1).(*Error)
 }
-func (m *mockAgentService) RetireAgent(ctx context.Context, id uuid.UUID, force bool) *Error {
-	args := m.Called(ctx, id, force)
+func (m *mockAgentService) RetireAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, force bool) *Error {
+	args := m.Called(ctx, id, callerProjectID, force)
 	if args.Get(0) == nil {
 		return nil
 	}
 	return args.Get(0).(*Error)
 }
-func (m *mockAgentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
-	args := m.Called(ctx, id)
+func (m *mockAgentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
+	args := m.Called(ctx, id, callerProjectID)
 	if args.Get(0) == nil {
 		return nil, args.Get(1).(*Error)
 	}
@@ -217,7 +217,7 @@ func TestAgentHandler_Get_Success(t *testing.T) {
 	id := uuid.New()
 	projectID := uuid.New()
 
-	m.On("GetAgent", mock.Anything, id).Return(
+	m.On("GetAgent", mock.Anything, id, projectID).Return(
 		&model.Agent{ID: id, ProjectID: projectID, Name: "alpha", Role: "developer",
 			Status: model.AgentIdle, Capabilities: []string{"coding"}, Version: 1,
 			CreatedAt: parseTime("2026-06-12T10:00:00Z"),
@@ -234,7 +234,7 @@ func TestAgentHandler_Get_NotFound(t *testing.T) {
 	id := uuid.New()
 	projectID := uuid.New()
 
-	m.On("GetAgent", mock.Anything, id).Return(
+	m.On("GetAgent", mock.Anything, id, projectID).Return(
 		(*model.Agent)(nil),
 		&service.Error{Status: 404, Code: "NOT_FOUND", Message: "Agent not found"})
 
@@ -256,7 +256,7 @@ func TestAgentHandler_Update_VersionConflict(t *testing.T) {
 	id := uuid.New()
 	projectID := uuid.New()
 
-	m.On("UpdateAgent", mock.Anything, id, mock.Anything).Return(
+	m.On("UpdateAgent", mock.Anything, id, projectID, mock.Anything).Return(
 		(*model.Agent)(nil),
 		&service.Error{Status: 409, Code: "VERSION_CONFLICT", Message: "stale version"})
 
@@ -273,7 +273,7 @@ func TestAgentHandler_Delete_Success(t *testing.T) {
 	id := uuid.New()
 	projectID := uuid.New()
 
-	m.On("RetireAgent", mock.Anything, id, false).Return((*service.Error)(nil))
+	m.On("RetireAgent", mock.Anything, id, projectID, false).Return((*service.Error)(nil))
 
 	w := doRequest(r, http.MethodDelete, "/v1/agents/"+id.String(), projectID.String(), nil)
 	assert.Equal(t, http.StatusNoContent, w.Code)
@@ -285,7 +285,7 @@ func TestAgentHandler_Delete_NotFound(t *testing.T) {
 	id := uuid.New()
 	projectID := uuid.New()
 
-	m.On("RetireAgent", mock.Anything, id, false).Return(
+	m.On("RetireAgent", mock.Anything, id, projectID, false).Return(
 		&service.Error{Status: 404, Code: "NOT_FOUND", Message: "Agent not found"})
 
 	w := doRequest(r, http.MethodDelete, "/v1/agents/"+id.String(), projectID.String(), nil)
@@ -293,6 +293,76 @@ func TestAgentHandler_Delete_NotFound(t *testing.T) {
 	m.AssertExpectations(t)
 }
 
+
+// ---- F-013 cross-tenant handler tests (Sprint 5) ------------------
+
+func TestAgentHandler_Get_CrossTenant(t *testing.T) {
+	r, m := newTestRouter(t)
+	id := uuid.New()
+	projectID := uuid.New()
+
+	m.On("GetAgent", mock.Anything, id, projectID).Return(
+		(*model.Agent)(nil),
+		&service.Error{Status: 404, Code: "CROSS_TENANT_BLOCKED", Message: "blocked"})
+
+	w := doRequest(r, http.MethodGet, "/v1/agents/"+id.String(), projectID.String(), nil)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	m.AssertExpectations(t)
+}
+
+func TestAgentHandler_Update_CrossTenant(t *testing.T) {
+	r, m := newTestRouter(t)
+	id := uuid.New()
+	projectID := uuid.New()
+
+	m.On("UpdateAgent", mock.Anything, id, projectID, mock.Anything).Return(
+		(*model.Agent)(nil),
+		&service.Error{Status: 404, Code: "CROSS_TENANT_BLOCKED", Message: "blocked"})
+
+	body := map[string]interface{}{"role": "qa", "version": 1}
+	w := doRequest(r, http.MethodPut, "/v1/agents/"+id.String(), projectID.String(), body)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	m.AssertExpectations(t)
+}
+
+func TestAgentHandler_Delete_CrossTenant(t *testing.T) {
+	r, m := newTestRouter(t)
+	id := uuid.New()
+	projectID := uuid.New()
+
+	m.On("RetireAgent", mock.Anything, id, projectID, false).Return(
+		&service.Error{Status: 404, Code: "CROSS_TENANT_BLOCKED", Message: "blocked"})
+
+	w := doRequest(r, http.MethodDelete, "/v1/agents/"+id.String(), projectID.String(), nil)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	m.AssertExpectations(t)
+}
+
+func TestAgentHandler_Get_MissingProjectHeader(t *testing.T) {
+	r, _ := newTestRouter(t)
+	id := uuid.New()
+
+	// pass empty projectID header — the handler should reject with 400
+	w := doRequest(r, http.MethodGet, "/v1/agents/"+id.String(), "", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentHandler_Update_MissingProjectHeader(t *testing.T) {
+	r, _ := newTestRouter(t)
+	id := uuid.New()
+
+	body := map[string]interface{}{"role": "qa", "version": 1}
+	w := doRequest(r, http.MethodPut, "/v1/agents/"+id.String(), "", body)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentHandler_Delete_MissingProjectHeader(t *testing.T) {
+	r, _ := newTestRouter(t)
+	id := uuid.New()
+
+	w := doRequest(r, http.MethodDelete, "/v1/agents/"+id.String(), "", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
 // ---- helper utilities ------------------------------------------------
 
 func requireUnmarshal(t *testing.T, w *httptest.ResponseRecorder, v interface{}) {

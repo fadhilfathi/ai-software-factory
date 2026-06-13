@@ -32,11 +32,11 @@ import (
 // is *agentService below.
 type AgentService interface {
 	CreateAgent(ctx context.Context, req CreateAgentRequest) (*model.Agent, *Error)
-	GetAgent(ctx context.Context, id uuid.UUID) (*model.Agent, *Error)
+	GetAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) (*model.Agent, *Error)
 	ListAgents(ctx context.Context, req ListAgentsRequest) (*ListAgentsResult, *Error)
-	UpdateAgent(ctx context.Context, id uuid.UUID, req UpdateAgentRequest) (*model.Agent, *Error)
-	RetireAgent(ctx context.Context, id uuid.UUID, force bool) *Error
-	ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error)
+	UpdateAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, req UpdateAgentRequest) (*model.Agent, *Error)
+	RetireAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, force bool) *Error
+	ListAgentCapabilities(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) ([]*model.AgentCapabilityView, *Error)
 	ListCapabilities(ctx context.Context, req ListCapabilitiesRequest) (*ListCapabilitiesResult, *Error)
 }
 
@@ -175,13 +175,23 @@ func (s *agentService) CreateAgent(ctx context.Context, req CreateAgentRequest) 
 // Read
 // ============================================================================
 
-func (s *agentService) GetAgent(ctx context.Context, id uuid.UUID) (*model.Agent, *Error) {
+// GetAgent fetches an agent by ID. The callerProjectID is checked
+// against the agent's project_id; a miss returns 404
+// CROSS_TENANT_BLOCKED so the existence of the resource in another
+// project is not leaked (F-013).
+func (s *agentService) GetAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) (*model.Agent, *Error) {
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
 	a, err := s.store.Agents().GetByID(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Agent not found")
 	}
 	if err != nil {
 		return nil, internalError("Failed to fetch agent")
+	}
+	if a.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
 	}
 	return a, nil
 }
@@ -231,11 +241,14 @@ func (s *agentService) ListAgents(ctx context.Context, req ListAgentsRequest) (*
 // ListAgentCapabilities is the per-agent read. We return
 // []model.AgentCapabilityView directly to keep the handler mapping
 // trivial.
-func (s *agentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
-	caps, err := s.store.Agents().ListCapabilitiesByAgent(ctx, id)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, notFound("Agent not found")
+// ListAgentCapabilities is the per-agent read. Cross-tenant check is
+// enforced by first fetching the agent (GetAgent) under the same
+// callerProjectID guard, then listing capabilities (F-013).
+func (s *agentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) ([]*model.AgentCapabilityView, *Error) {
+	if _, apiErr := s.GetAgent(ctx, id, callerProjectID); apiErr != nil {
+		return nil, apiErr
 	}
+	caps, err := s.store.Agents().ListCapabilitiesByAgent(ctx, id)
 	if err != nil {
 		return nil, internalError("Failed to fetch agent capabilities")
 	}
@@ -251,8 +264,11 @@ func (s *agentService) ListAgentCapabilities(ctx context.Context, id uuid.UUID) 
 // mismatch returns 409 VERSION_CONFLICT. Capability rewrites are
 // done in the store's SetCapabilities to keep the join + cache
 // consistent; a capability rewrite also bumps the version.
-func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, req UpdateAgentRequest) (*model.Agent, *Error) {
-	existing, apiErr := s.GetAgent(ctx, id)
+// UpdateAgent applies a partial update with optimistic-concurrency
+// (api-spec.md §1.4). Cross-tenant check happens inside GetAgent
+// via the callerProjectID parameter (F-013).
+func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, req UpdateAgentRequest) (*model.Agent, *Error) {
+	existing, apiErr := s.GetAgent(ctx, id, callerProjectID)
 	if apiErr != nil {
 		return nil, apiErr
 	}
@@ -310,7 +326,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, req Update
 		}
 		// Re-read so the returned shape has the new version and
 		// refreshed cache.
-		fresh, apiErr := s.GetAgent(ctx, existing.ID)
+		fresh, apiErr := s.GetAgent(ctx, existing.ID, callerProjectID)
 		if apiErr != nil {
 			return nil, apiErr
 		}
@@ -331,7 +347,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, req Update
 			return nil, internalError("Failed to update agent")
 		}
 		// Re-read one more time to surface the final version.
-		return s.GetAgent(ctx, existing.ID)
+		return s.GetAgent(ctx, existing.ID, callerProjectID)
 	}
 
 	// No capabilities change — straight Update.
@@ -345,7 +361,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, req Update
 		}
 		return nil, internalError("Failed to update agent")
 	}
-	return s.GetAgent(ctx, existing.ID)
+	return s.GetAgent(ctx, existing.ID, callerProjectID)
 }
 
 // ============================================================================
@@ -355,7 +371,12 @@ func (s *agentService) UpdateAgent(ctx context.Context, id uuid.UUID, req Update
 // RetireAgent soft-deletes the agent (status=retired, retired_at=NOW).
 // The api-spec.md §1.5 ?force=true path is a handler concern; the
 // service does the soft delete unconditionally.
-func (s *agentService) RetireAgent(ctx context.Context, id uuid.UUID, _ bool) *Error {
+// RetireAgent is the soft-delete path. Cross-tenant check happens
+// inside GetAgent via the callerProjectID parameter (F-013).
+func (s *agentService) RetireAgent(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID, _ bool) *Error {
+	if _, apiErr := s.GetAgent(ctx, id, callerProjectID); apiErr != nil {
+		return apiErr
+	}
 	err := s.store.Agents().SoftDelete(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return notFound("Agent not found")

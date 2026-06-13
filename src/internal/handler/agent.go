@@ -202,7 +202,14 @@ func (h *AgentHandler) Get(c *gin.Context) {
 		})
 		return
 	}
-	agent, apiErr := h.svc.GetAgent(c.Request.Context(), id)
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok || callerProjectID == uuid.Nil {
+		respondError(c, &service.Error{
+			Status:  400, Code: "MISSING_PROJECT_HEADER", Message: "X-Project-ID header is required for this request",
+		})
+		return
+	}
+	agent, apiErr := h.svc.GetAgent(c.Request.Context(), id, callerProjectID)
 	if apiErr != nil {
 		respondError(c, apiErr)
 		return
@@ -220,6 +227,13 @@ func (h *AgentHandler) Update(c *gin.Context) {
 		})
 		return
 	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok || callerProjectID == uuid.Nil {
+		respondError(c, &service.Error{
+			Status:  400, Code: "MISSING_PROJECT_HEADER", Message: "X-Project-ID header is required for this request",
+		})
+		return
+	}
 	var req updateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, &service.Error{
@@ -227,7 +241,7 @@ func (h *AgentHandler) Update(c *gin.Context) {
 		})
 		return
 	}
-	agent, apiErr := h.svc.UpdateAgent(c.Request.Context(), id, service.UpdateAgentRequest{
+	agent, apiErr := h.svc.UpdateAgent(c.Request.Context(), id, callerProjectID, service.UpdateAgentRequest{
 		Role:         req.Role,
 		Status:       req.Status,
 		Capabilities: req.Capabilities,
@@ -255,8 +269,15 @@ func (h *AgentHandler) Delete(c *gin.Context) {
 		})
 		return
 	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok || callerProjectID == uuid.Nil {
+		respondError(c, &service.Error{
+			Status:  400, Code: "MISSING_PROJECT_HEADER", Message: "X-Project-ID header is required for this request",
+		})
+		return
+	}
 	force := strings.EqualFold(c.Query("force"), "true")
-	apiErr := h.svc.RetireAgent(c.Request.Context(), id, force)
+	apiErr := h.svc.RetireAgent(c.Request.Context(), id, callerProjectID, force)
 	if apiErr != nil {
 		respondError(c, apiErr)
 		return

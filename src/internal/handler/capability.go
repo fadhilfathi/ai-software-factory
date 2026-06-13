@@ -57,7 +57,14 @@ func (h *CapabilityHandler) ListAgentCapabilities(c *gin.Context) {
 		})
 		return
 	}
-	caps, apiErr := h.agents.ListAgentCapabilities(c.Request.Context(), id)
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok || callerProjectID == uuid.Nil {
+		respondError(c, &service.Error{
+			Status:  http.StatusBadRequest, Code: "MISSING_PROJECT_HEADER", Message: "X-Project-ID header is required for this request",
+		})
+		return
+	}
+	caps, apiErr := h.agents.ListAgentCapabilities(c.Request.Context(), id, callerProjectID)
 	if apiErr != nil {
 		respondError(c, apiErr)
 		return
