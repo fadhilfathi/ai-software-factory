@@ -89,7 +89,7 @@ func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDe
 		)
 	}
 
-	if _, err := s.store.Tasks().GetByID(ctx, req.TaskID); err != nil {
+	if _, err := s.store.Tasks().GetByID(req.TaskID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, notFound("Task not found")
 		}

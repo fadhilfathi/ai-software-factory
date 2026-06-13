@@ -222,7 +222,7 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID 
 	// so we never leave an orphan execution behind for a task
 	// that doesn't exist. The store.ErrNotFound path is
 	// returned to the caller; the handler maps it to 404.
-	if _, err := s.store.Tasks().GetByID(ctx, taskID); err != nil {
+	if _, err := s.store.Tasks().GetByID(taskID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, ErrTaskNotFound
 		}

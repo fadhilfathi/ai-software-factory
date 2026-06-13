@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
@@ -24,7 +25,7 @@ func NewCodeService(s store.Store, log *zap.Logger) *CodeService {
 
 // getUserID extracts the user ID from context
 func (s *CodeService) getUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(UserIDKey).(string)
+	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	return userID, ok
 }
 
@@ -34,7 +35,15 @@ func (s *CodeService) checkProjectAccess(ctx context.Context, projectID string) 
 	if !ok {
 		return false
 	}
-	return s.store.Users().CheckProjectAccess(userID, projectID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return false
+	}
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return false
+	}
+	return s.store.Users().CheckProjectAccess(uid, pid)
 }
 
 // GenerateCodeRequest carries code generation input.
