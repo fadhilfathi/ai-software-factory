@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 )
 
 type postgresReviewStore struct {
@@ -71,7 +72,7 @@ func scanReview(row pgx.Row) (*model.Review, error) {
 	err := row.Scan(&r.ID, &r.ProjectID, &r.TargetAgentID, &r.ReviewerID, &r.AgentID, &r.CommitSHA, &r.Status, &r.Result, &r.Score, &metricsJSON, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrNotFound
+			return nil, store.ErrNotFound
 		}
 		return nil, err
 	}
@@ -168,4 +169,26 @@ func (st *postgresReviewStore) CreateComment(c *model.ReviewComment) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (st *postgresReviewStore) ListComments(reviewID uuid.UUID) ([]*model.ReviewComment, error) {
+	ctx := context.Background()
+	rows, err := st.s.pool.Query(ctx, `
+		SELECT id, review_id, file, line, author_id, content, created_at
+		FROM review_comments WHERE review_id = $1 ORDER BY created_at ASC`, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comments []*model.ReviewComment
+	for rows.Next() {
+		var c model.ReviewComment
+		err := rows.Scan(&c.ID, &c.ReviewID, &c.File, &c.Line, &c.AuthorID, &c.Content, &c.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		comments = append(comments, &c)
+	}
+	return comments, nil
 }

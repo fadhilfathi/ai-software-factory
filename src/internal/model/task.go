@@ -21,6 +21,7 @@ type TaskStatus string
 
 const (
 	TaskBacklog    TaskStatus = "backlog"
+	TaskTodo       TaskStatus = "todo"
 	TaskReady      TaskStatus = "ready"
 	TaskInProgress TaskStatus = "in_progress"
 	TaskReview     TaskStatus = "review"
