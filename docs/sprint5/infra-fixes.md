@@ -84,8 +84,50 @@ Filed as a Sprint 5+ follow-up. Not blocking TASK-429.
 
 - **Pre-fix**: Run #27459209340 on `ebeba6b` — Deploy workflow red
   at `build-push-api` with the `Cache export is not supported` error.
-- **Post-fix**: TBD. Will be triggered via `workflow_dispatch` on the
-  fix branch after the PR is opened. Result recorded below.
+- **Post-fix run #1**: Run #27461419661 on `fc4db30` (squash-merge of
+  PR #2, triggered automatically by the push to `main`)
+  - ✓ **Build & Push Images** job — **SUCCESS** in 1m36s
+    - `Build & push API` (step 4) — 41s, success
+    - `Build & push Frontend` (step 5) — 48s, success
+  - ❌ **Deploy Stack** job — FAILED in 1m15s
+    - All buildx / image-push steps clean
+    - Step 6 (`Deploy`) failed because the `api` container panic'd on
+      startup: `panic: required environment variable JWT_SECRET is not set`
+      (`internal/config/config.go:99`).
+    - `api-1` was restart-looping; `db-1` and `redis-1` were healthy.
+
+### Separate finding (NOT a TASK-429 regression)
+
+The Deploy failure above is **not caused by the buildx fix** — the
+`Build & Push Images` job, which is the only thing this commit changed,
+succeeded cleanly. The failure is a pre-existing bug in the
+`docker-compose.yml` `api` service: its `environment:` block
+(lines 64-73) does not set `JWT_SECRET` (or `JWT_ACCESS_SECRET` /
+`JWT_REFRESH_SECRET` if the API has split them). The Go API's
+`config.Load()` panics on `getEnvRequired("JWT_SECRET")` because the
+env var is unset.
+
+This failure would have happened on any Deploy run, including the
+Sprint 4 closeout run #27459209340, but the `buildx cache-to` error
+struck first and masked it. The same pre-fix run only reached
+`build-push-api` and never attempted the Deploy step.
+
+This is a **separate Sprint 5 follow-up task** (not part of TASK-429,
+whose scope was the buildx `cache-to` problem only):
+
+1. Determine which JWT secret(s) the API requires (check
+   `internal/config/config.go` for all `getEnvRequired` / `os.Getenv`
+   calls).
+2. Add the missing `JWT_SECRET` (and any other required vars) to the
+   `api` service's `environment:` block in `docker-compose.yml`.
+3. Decide on a secret-management strategy:
+   - **Local dev**: pull from a `.env` file via Compose's `env_file:`
+     directive.
+   - **GHA secrets**: the `Deploy` workflow does not currently inject
+     GitHub Actions secrets into the container environment. May need
+     to add an `env:` block to the `Deploy` step that sources
+     `${{ secrets.JWT_SECRET }}` etc.
+4. Verify with a re-run of the Deploy workflow on `main`.
 
 ### Files changed
 
