@@ -280,8 +280,12 @@ func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
 		"first assignment should not be idempotent")
 	assert.Equal(t, agentID, assignResp.Assignment.AgentID.String(),
 		"assignment should target the smoke test agent")
-	assert.Equal(t, "coding", assignResp.Assignment.RequiredCapabilities,
-		"assignment should record the required capability")
+	// Assignment struct in Sprint 4 has no RequiredCapabilities field — that's on the
+	// Task struct. The TASK-404 service code matches capabilities but does not echo
+	// them back on the assignment row. Sprint 5 may add this back.
+	_ = assignResp.Assignment // keep the assignment variable referenced
+	assert.Equal(t, "active", string(assignResp.Assignment.Status),
+		"assignment should be active after successful assign")
 
 	// Step 4: POST /v1/deliverables — create a deliverable tied to
 	// the task and agent. This proves the final hop in the

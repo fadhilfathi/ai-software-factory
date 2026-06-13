@@ -26,6 +26,9 @@ func (m *MockStore) Executions() store.ExecutionStore { return m.Called().Get(0)
 func (m *MockStore) Deliverables() store.DeliverableStore {
 	return m.Called().Get(0).(store.DeliverableStore)
 }
+func (m *MockStore) DeliverableVersions() store.DeliverableVersionStore {
+	return m.Called().Get(0).(store.DeliverableVersionStore)
+}
 func (m *MockStore) Tasks() store.TaskStore           { return m.Called().Get(0).(store.TaskStore) }
 func (m *MockStore) Code() store.CodeStore            { return m.Called().Get(0).(store.CodeStore) }
 func (m *MockStore) Reviews() store.ReviewStore       { return m.Called().Get(0).(store.ReviewStore) }
@@ -169,7 +172,7 @@ func TestReviewService_CreateReview(t *testing.T) {
 		review, err := svc.CreateReview(req)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, 404, err.StatusCode)
+		assert.Equal(t, 404, err.Status)
 		assert.Nil(t, review)
 	})
 
@@ -184,7 +187,7 @@ func TestReviewService_CreateReview(t *testing.T) {
 		review, err := svc.CreateReview(req)
 
 		assert.NotNil(t, err)
-		assert.Equal(t, 400, err.StatusCode)
+		assert.Equal(t, 400, err.Status)
 		assert.Nil(t, review)
 	})
 }
