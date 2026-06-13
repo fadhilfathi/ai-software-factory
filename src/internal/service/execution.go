@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -340,7 +341,7 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 		}
 		instanceID := uuid.New()
 		exec.AionAgentInstanceID = &instanceID
-		if err := s.store.Executions().UpdateStatus(ctx, exec.ExecutionID, exec.Status, exec.ErrorMessage); err != nil {
+		if _, err := s.store.Executions().UpdateStatus(ctx, exec.ExecutionID, exec.Status, exec.ErrorMessage); err != nil {
 			// Best-effort cancel the spawn we just made before
 			// returning the error to the caller.
 			_ = s.runtime.Cancel(ctx, handle)
@@ -349,7 +350,7 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 		// Record the worker row. PID is only available for the
 		// process runtime; the mock runtime leaves it zero.
 		var pid *int
-		if h, ok := handle.(interface{ PID() int }); ok {
+		var pid *int
 			if p := h.PID(); p > 0 {
 				pid = &p
 			}
@@ -379,7 +380,7 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 	// been updated to use aion.MockRuntime. Production main.go
 	// always passes a runtime.
 	s.wg.Add(1)
-	go s.mockExecution(exec.ExecutionID, callerProjectID)
+	go s.mockExecution(exec.ExecutionID)
 	return exec, nil
 }
 
@@ -564,7 +565,7 @@ func (s *ExecutionService) driveWorker(workerID uuid.UUID, handle aion.WorkerHan
 
 	// Update the worker row to running.
 	if w, gerr := s.store.Workers().GetByID(context.Background(), workerID); gerr == nil && w != nil {
-		w.Status = model.WorkerStatusRunning
+		w.Status = model.WorkerRunning
 		_ = s.store.Workers().Update(context.Background(), w)
 	}
 

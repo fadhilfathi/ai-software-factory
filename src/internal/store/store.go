@@ -316,6 +316,7 @@ type Pagination struct {
 // Store combines all individual stores.
 type Store interface {
 	Users() UserStore
+	Workers() WorkerStore
 	Projects() ProjectStore
 	Agents() AgentStore
 	Capabilities() CapabilityStore
