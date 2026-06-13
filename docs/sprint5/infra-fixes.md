@@ -143,3 +143,132 @@ whose scope was the buildx `cache-to` problem only):
 - Closeout commit: `ebeba6b32a0c03ca5ab2095264eb46dd40264268`
 - `docker buildx` cache backends: https://docs.docker.com/go/build-cache-backends/
 - `docker/setup-buildx-action`: https://github.com/docker/setup-buildx-action
+---
+
+## TASK-430 — Fix Deploy Stack API health check (missing `JWT_SECRET`) (2026-06-13)
+
+### Problem
+
+Reported during TASK-429 post-fix verification (run #27461419661):
+after the buildx fix shipped and the `Build & Push Images` job turned
+green, the `Deploy Stack` job failed at the `Deploy` step. The
+`ai-software-factory-api-1` container panic'd on startup with:
+
+```
+panic: required environment variable JWT_SECRET is not set
+goroutine 1 [running]:
+  github.com/fadhilfathi/AI-Software-Factory/internal/config.getEnvRequired(...)
+	/build/internal/config/config.go:99
+  github.com/fadhilfathi/AI-Software-Factory/internal/config.Load()
+	/build/internal/config/config.go:67
+  main.main()
+	/build/cmd/main.go:30
+```
+
+The container exited, the docker healthcheck marked it `unhealthy`,
+and compose refused to start the dependent `frontend` service with
+`dependency failed to start: container ai-software-factory-api-1 is unhealthy`.
+
+### Root cause (confirmed)
+
+Two pre-existing bugs conspired:
+
+1. The Go API at `src/internal/config/config.go` (line 67) calls
+   `getEnvRequired("JWT_SECRET")` — the process panics if the var is unset.
+   `src/internal/service/auth.go` (lines 51-52) additionally requires
+   the secret to be at least 32 characters or the process
+   `log.Fatal`s.
+2. The `api` service in `docker-compose.yml` (lines 22-35) had no
+   `JWT_SECRET` in its `environment:` block. The Go config also reads
+   `SERVER_PORT` (line 57), not `PORT`, but the compose file set
+   `PORT: 8080`. The api fell back to the default `8080` so this was
+   cosmetic, not blocking — but worth aligning.
+3. `.github/workflows/deploy.yml` `deploy:` job did not pass any
+   environment variables from GitHub Actions secrets into the
+   compose stack.
+
+The pre-fix run #27459209340 on `ebeba6b` failed earlier (at
+`build-push-api`, on the buildx cache export error) and never reached
+the `Deploy` step — so the JWT bug was masked by the buildx bug. Any Deploy
+run would have hit it.
+
+### Fix
+
+Two-file change, no code path changes:
+
+**1. `docker-compose.yml`** — `api` service `environment:` block:
+
+```diff
+     environment:
+-      PORT:             ${API_PORT:-8080}
++      # SERVER_PORT (not PORT) is read by src/internal/config/config.go:57.
++      SERVER_PORT:      ${API_PORT:-8080}
++      # JWT_SECRET is required at startup; panics if missing or < 32 chars.
++      # Generate one with: openssl rand -hex 32 (64 hex chars; minimum is 32).
++      JWT_SECRET:       ${JWT_SECRET:?error=JWT_SECRET must be set in .env (32+ chars; generate with: openssl rand -hex 32)}
+       LOG_LEVEL:        ${LOG_LEVEL:-info}
+       DB_HOST:          db
+       ...
+```
+
+The `${VAR:?error=...}` form is the loudest fail-mode: if `.env` is
+missing `JWT_SECRET`, docker compose fails immediately at startup,
+not at container start. No silent defaults.
+
+**2. `.github/workflows/deploy.yml`** — `deploy:` job `env:` block:
+
+```diff
+     env:
+       COMPOSE_FILE: docker-compose.yml
++      # Required by src/internal/config/config.go (panics on missing/short JWT_SECRET).
++      # Repo must have a JWT_SECRET secret set (Settings -> Secrets and variables -> Actions).
++      # Generate with: openssl rand -hex 32 (produces 64 hex chars; minimum is 32).
++      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+```
+
+GitHub Actions will substitute `${{ secrets.JWT_SECRET }}` from the
+repo's encrypted secret store. The secret value is never written to
+logs (GHA redacts `secrets.*` automatically).
+
+### Pre-deploy checklist (operator action required)
+
+Before the next push to `main` can turn the Deploy workflow green,
+the user (or repo owner) MUST add a `JWT_SECRET` repository secret:
+
+1. Generate: `openssl rand -hex 32` (produces 64 hex characters; minimum is 32)
+2. GitHub → Settings → Secrets and variables → Actions → New repository secret
+3. Name: `JWT_SECRET`, Value: <paste the generated secret>
+4. Click "Add secret"
+
+For local dev, add the same value to `.env` (line 68-69 of
+`.env.example` has a placeholder; replace with the generated value).
+
+### Out of scope
+
+- Do NOT change `src/internal/config/config.go` to make `JWT_SECRET`
+  optional — the panic-on-missing is correct hardening.
+- Do NOT add a managed-secret rotation pipeline (Sprint 6+).
+- Do NOT add a `docker/setup-buildx-action@v3` with `docker-container`
+  driver here (separate Sprint 5+ follow-up, see TASK-429 'Proper follow-up').
+- Do NOT touch the Sprint Quality Gate workflow.
+
+### Post-fix run (TBD — pending JWT_SECRET repo secret)
+
+TBD. Awaiting the user to add the `JWT_SECRET` repository secret in
+GitHub. Once added, this section will record:
+
+- Commit SHA on `main` (the squash-merge of the PR for this fix)
+- The Deploy workflow run URL (via `workflow_dispatch` re-run or fresh push)
+- Confirmation that both `Build & Push Images` and `Deploy Stack` jobs are green
+- The api container's healthcheck status (should be `healthy`, not just running)
+- A `curl http://localhost:8080/v1/healthz` 200 from a manual smoke test if available
+
+### Reference
+
+- Config: `src/internal/config/config.go` lines 56-67 (`getEnvRequired("JWT_SECRET")`)
+- Auth: `src/internal/service/auth.go` lines 51-52 (`len(jwtSecret) < 32` check)
+- Compose: `docker-compose.yml` lines 22-35 (the `api` service block)
+- Deploy workflow: `.github/workflows/deploy.yml` lines 78-82 (the `deploy:` job `env:` block)
+- Failed run: https://github.com/fadhilfathi/ai-software-factory/actions/runs/27461419661
+- TASK-429 commit (buildx fix): `fc4db30`
+

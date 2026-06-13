@@ -81,6 +81,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       COMPOSE_FILE: docker-compose.yml
+      # Required by src/internal/config/config.go (panics on missing/short JWT_SECRET).
+      # Repo must have a JWT_SECRET secret set (Settings -> Secrets and variables -> Actions).
+      # Generate with: openssl rand -hex 32 (produces 64 hex chars; minimum is 32).
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
