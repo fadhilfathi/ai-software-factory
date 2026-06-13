@@ -53,7 +53,7 @@ func (s *ReviewService) CreateReview(req CreateReviewRequest) (*model.Review, *E
 	pID, err := uuid.Parse(req.ProjectID)
 	if err != nil {
 		errs.Add("project_id", "Invalid Project ID format")
-		return nil, validationError(errs)
+		return nil, validationError(*errs)
 	}
 
 	var targetAgentID uuid.UUID
@@ -61,7 +61,7 @@ func (s *ReviewService) CreateReview(req CreateReviewRequest) (*model.Review, *E
 		targetAgentID, err = uuid.Parse(req.TargetAgentID)
 		if err != nil {
 			errs.Add("target_agent_id", "Invalid Agent ID format")
-			return nil, validationError(errs)
+			return nil, validationError(*errs)
 		}
 	}
 
@@ -147,7 +147,8 @@ func (s *ReviewService) processReview(ctx context.Context, review *model.Review)
 func (s *ReviewService) GetReview(id string) (*model.Review, *Error) {
 	uID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, validationError(validation.Errors{"id": "Invalid Review ID format"})
+		errs.Add("id", "Invalid Review ID format")
+		return nil, validationError(*errs)
 	}
 	review, err := s.store.Reviews().GetByID(uID)
 	if err != nil {

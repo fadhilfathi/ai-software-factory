@@ -103,7 +103,11 @@ func (s *CodeService) GetFile(ctx context.Context, projectID, path string) (*mod
 	if !s.checkProjectAccess(ctx, projectID) {
 		return nil, notFound("File not found")
 	}
-	file, err := s.store.Code().GetFile(projectID, path)
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return nil, notFound("File not found")
+	}
+	file, err := s.store.Code().GetFile(pid, path)
 	if err != nil {
 		return nil, notFound("File not found")
 	}
