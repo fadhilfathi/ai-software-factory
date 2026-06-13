@@ -96,7 +96,7 @@ func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDe
 	if task.ProjectID != callerProjectID {
 		return nil, crossTenantBlocked()
 	}
-	agent, err := s.store.Agents().GetByID(req.AgentID)
+	agent, err := s.store.Agents().GetByID(ctx, req.AgentID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Agent not found")
 	}
@@ -163,7 +163,7 @@ func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDe
 	}
 
 	// Atomic write: main row + first version row in one tx.
-	err := s.store.WithTx(ctx, func(tx store.Tx) error {
+	err = s.store.WithTx(ctx, func(tx store.Tx) error {
 		if err := tx.Deliverables().Create(ctx, d); err != nil {
 			return err
 		}
@@ -199,7 +199,7 @@ func (s *DeliverableService) GetDeliverable(ctx context.Context, id uuid.UUID, c
 		s.log.Error("failed to get deliverable", zap.Error(err))
 		return nil, internalError("Failed to get deliverable")
 	}
-	task, err := s.store.Tasks().GetByID(ctx, d.TaskID)
+	task, err := s.store.Tasks().GetByID(d.TaskID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Parent task not found")
 	}
@@ -233,8 +233,8 @@ func (s *DeliverableService) ListDeliverables(ctx context.Context, filter model.
 	if callerProjectID == uuid.Nil {
 		return nil, missingProjectHeader()
 	}
-	if filter.TaskID != nil && *filter.TaskID != uuid.Nil {
-		task, err := s.store.Tasks().GetByID(ctx, *filter.TaskID)
+	if filter.TaskID != uuid.Nil {
+		task, err := s.store.Tasks().GetByID(filter.TaskID)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, notFound("Task not found")
 		}
@@ -246,8 +246,8 @@ func (s *DeliverableService) ListDeliverables(ctx context.Context, filter model.
 			return nil, crossTenantBlocked()
 		}
 	}
-	if filter.AgentID != nil && *filter.AgentID != uuid.Nil {
-		agent, err := s.store.Agents().GetByID(ctx, *filter.AgentID)
+	if filter.AgentID != uuid.Nil {
+		agent, err := s.store.Agents().GetByID(ctx, filter.AgentID)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, notFound("Agent not found")
 		}
@@ -309,7 +309,7 @@ func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID
 		return nil, internalError("Failed to read deliverable")
 	}
 	// Resolve the deliverable's parent task and verify project match.
-	parentTask, err := s.store.Tasks().GetByID(ctx, current.TaskID)
+	parentTask, err := s.store.Tasks().GetByID(current.TaskID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Parent task not found")
 	}
@@ -395,7 +395,7 @@ func (s *DeliverableService) ListDeliverableVersions(ctx context.Context, delive
 		return nil, internalError("Failed to list versions")
 	}
 	// Resolve the deliverable's parent task and verify project match.
-	parentTask, err := s.store.Tasks().GetByID(ctx, deliverable.TaskID)
+	parentTask, err := s.store.Tasks().GetByID(deliverable.TaskID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, notFound("Parent task not found")
 	}
