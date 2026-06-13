@@ -53,7 +53,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	writeJSON(c, http.StatusCreated, userResponse{
-		ID:        user.ID,
+		ID:        user.ID.String(),
 		Email:     user.Email,
 		Name:      user.Name,
 		Role:      string(user.Role),
@@ -83,7 +83,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	}
 
 	writeJSON(c, http.StatusOK, userResponse{
-		ID:        user.ID,
+		ID:        user.ID.String(),
 		Email:     user.Email,
 		Name:      user.Name,
 		Role:      string(user.Role),

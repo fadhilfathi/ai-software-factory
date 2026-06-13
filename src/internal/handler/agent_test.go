@@ -7,6 +7,10 @@ package handler
 // Each test asserts the response status, body, and that the
 // service was called with the right arguments.
 
+// Error aliases service.Error so test files can use *Error locally
+// (matches production code that uses *service.Error).
+type Error = service.Error
+
 import (
 	"bytes"
 	"context"

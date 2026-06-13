@@ -56,7 +56,7 @@ func seedTaskAndAgent(
 		ProjectID: projectID,
 		Title:     taskTitle,
 		Status:    model.TaskOpen,
-		Priority:  model.TaskPriorityNormal,
+		Priority:  model.PriorityNormal,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -408,7 +408,7 @@ func TestListAssignmentHistory_EmptyForNewTask(t *testing.T) {
 		ProjectID: projectID,
 		Title:     "no events",
 		Status:    model.TaskOpen,
-		Priority:  model.TaskPriorityNormal,
+		Priority:  model.PriorityNormal,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
