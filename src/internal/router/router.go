@@ -14,9 +14,16 @@ import (
 // Matches the convention used in other services in the repo.
 var publicRouteSet = map[string]bool{
 	"GET /v1/healthz":         true,
+	"HEAD /v1/healthz":        true,
 	"POST /v1/auth/login":     true,
 	"POST /v1/auth/refresh":   true,
 	"POST /v1/users/register": true,
+}
+
+// healthzHandler responds to GET and HEAD on /v1/healthz.
+// Sprint 5: HEAD support added so Docker / wget --spider healthchecks pass.
+func healthzHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
@@ -45,9 +52,8 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 
 	v1 := r.Group("/v1")
 	{
-		v1.GET("/healthz", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "ok"})
-		})
+		v1.GET("/healthz", healthzHandler)
+		v1.HEAD("/healthz", healthzHandler)
 
 		v1.POST("/auth/login", auth.Login)
 		v1.POST("/auth/refresh", auth.Refresh)
