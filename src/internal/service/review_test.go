@@ -22,7 +22,6 @@ func (m *MockStore) Users() store.UserStore           { return m.Called().Get(0)
 func (m *MockStore) Projects() store.ProjectStore     { return m.Called().Get(0).(store.ProjectStore) }
 func (m *MockStore) Agents() store.AgentStore         { return m.Called().Get(0).(store.AgentStore) }
 func (m *MockStore) Capabilities() store.CapabilityStore { return m.Called().Get(0).(store.CapabilityStore) }
-func (m *MockStore) AgentRuns() store.AgentRunStore   { return m.Called().Get(0).(store.AgentRunStore) }
 func (m *MockStore) Executions() store.ExecutionStore { return m.Called().Get(0).(store.ExecutionStore) }
 func (m *MockStore) Deliverables() store.DeliverableStore {
 	return m.Called().Get(0).(store.DeliverableStore)

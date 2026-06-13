@@ -59,7 +59,7 @@ func (s *CodeService) GenerateCode(ctx context.Context, req GenerateCodeRequest)
 	}
 
 	// Verify project exists
-	if _, err := s.store.Projects().GetByID(req.ProjectID); err != nil {
+	if _, err := s.store.Projects().GetByID(uuid.MustParse(req.ProjectID)); err != nil {
 		return nil, notFound("Project not found")
 	}
 
@@ -136,7 +136,7 @@ func (s *CodeService) CreateCommit(ctx context.Context, req CreateCommitRequest)
 	// Save files
 	for _, f := range req.Files {
 		file := &model.ProjectFile{
-			ProjectID:    req.ProjectID,
+			ProjectID:    uuid.MustParse(req.ProjectID),
 			Path:         f.Path,
 			Content:      f.Content,
 			Language:     detectLanguage(f.Path),

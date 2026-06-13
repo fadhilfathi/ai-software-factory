@@ -25,7 +25,6 @@ func (s *postgresStore) Users() store.UserStore             { return &postgresUs
 func (s *postgresStore) Projects() store.ProjectStore        { return &postgresProjectStore{s} }
 func (s *postgresStore) Agents() store.AgentStore             { return &postgresAgentStore{s} }
 func (s *postgresStore) Capabilities() store.CapabilityStore  { return &postgresCapabilityStore{s} }
-func (s *postgresStore) AgentRuns() store.AgentRunStore       { return &postgresAgentRunStore{s} }
 // TASK-405: ExecutionStore. Returns a DBTX-backed sub-store so the
 // same code path can be reused inside a postgresTx (see WithTx).
 // No postgresTx.Executions() method today — execution writes are

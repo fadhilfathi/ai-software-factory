@@ -44,8 +44,8 @@ func (s *DeploymentService) TriggerDeployment(req TriggerDeploymentRequest) (*mo
 
 	now := time.Now().UTC()
 	deployment := &model.Deployment{
-		ID:            uuid.New().String(),
-		ProjectID:     req.ProjectID,
+		ID:            uuid.New(),
+		ProjectID:     uuid.MustParse(req.ProjectID),
 		Environment:   model.Environment(req.Environment),
 		Branch:        req.Branch,
 		Status:        model.DeployQueued,
@@ -69,7 +69,7 @@ func (s *DeploymentService) TriggerDeployment(req TriggerDeploymentRequest) (*mo
 
 // GetDeployment returns a deployment by ID.
 func (s *DeploymentService) GetDeployment(id string) (*model.Deployment, *Error) {
-	deployment, err := s.store.Deployments().GetByID(id)
+	deployment, err := s.store.Deployments().GetByID(uuid.MustParse(id))
 	if err != nil {
 		return nil, notFound("Deployment not found")
 	}
@@ -78,19 +78,19 @@ func (s *DeploymentService) GetDeployment(id string) (*model.Deployment, *Error)
 
 // RollbackDeployment creates a rollback deployment from a previous one.
 func (s *DeploymentService) RollbackDeployment(id string) (*model.Deployment, *Error) {
-	existing, err := s.store.Deployments().GetByID(id)
+	existing, err := s.store.Deployments().GetByID(uuid.MustParse(id))
 	if err != nil {
 		return nil, notFound("Deployment not found")
 	}
 
 	now := time.Now().UTC()
 	rollback := &model.Deployment{
-		ID:            uuid.New().String(),
+		ID:            uuid.New(),
 		ProjectID:     existing.ProjectID,
 		Environment:   existing.Environment,
 		Status:        model.DeployRollingBack,
 		RollbackFrom:  id,
-		RollbackTo:    existing.ID,
+		RollbackTo:    existing.ID.String(),
 		EstimatedTime: 600,
 		CreatedAt:     now,
 		UpdatedAt:     now,

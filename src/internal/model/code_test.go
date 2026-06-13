@@ -2,6 +2,7 @@ package model
 
 import (
 	"testing"
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -17,9 +18,9 @@ func TestCodeGenStatusConstants(t *testing.T) {
 func TestCodeGenRequestStruct(t *testing.T) {
 	now := time.Now().UTC()
 	req := CodeGenRequest{
-		ID:            "codegen-123",
-		ProjectID:     "proj-456",
-		TaskID:        "task-789",
+		ID:            uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+		ProjectID:     uuid.MustParse("00000000-0000-0000-0000-000000000002"),
+		TaskID:        uuid.MustParse("00000000-0000-0000-0000-000000000003"),
 		Specification: "Create a REST API",
 		Files:         []string{"main.go", "handler.go"},
 		Status:        CodeGenGenerating,
@@ -28,9 +29,9 @@ func TestCodeGenRequestStruct(t *testing.T) {
 		UpdatedAt:     now,
 	}
 
-	assert.Equal(t, "codegen-123", req.ID)
-	assert.Equal(t, "proj-456", req.ProjectID)
-	assert.Equal(t, "task-789", req.TaskID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000001"), req.ID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000002"), req.ProjectID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000003"), req.TaskID)
 	assert.Equal(t, "Create a REST API", req.Specification)
 	assert.Equal(t, []string{"main.go", "handler.go"}, req.Files)
 	assert.Equal(t, CodeGenGenerating, req.Status)
@@ -42,7 +43,7 @@ func TestCodeGenRequestStruct(t *testing.T) {
 func TestProjectFileStruct(t *testing.T) {
 	now := time.Now().UTC()
 	file := ProjectFile{
-		ProjectID:    "proj-1",
+		ProjectID:    uuid.MustParse("00000000-0000-0000-0000-000000000010"),
 		Path:         "src/main.go",
 		Content:      "package main\n\nfunc main() {}\n",
 		Language:     "go",
@@ -51,7 +52,7 @@ func TestProjectFileStruct(t *testing.T) {
 		ModifiedBy:   "agent-123",
 	}
 
-	assert.Equal(t, "proj-1", file.ProjectID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000010"), file.ProjectID)
 	assert.Equal(t, "src/main.go", file.Path)
 	assert.Equal(t, "package main\n\nfunc main() {}\n", file.Content)
 	assert.Equal(t, "go", file.Language)
@@ -64,7 +65,7 @@ func TestCommitStruct(t *testing.T) {
 	now := time.Now().UTC()
 	commit := Commit{
 		SHA:       "abc123def456",
-		ProjectID: "proj-1",
+		ProjectID: uuid.MustParse("00000000-0000-0000-0000-000000000010"),
 		Branch:    "main",
 		Message:   "Initial commit",
 		Author:    "agent-123",
@@ -76,7 +77,7 @@ func TestCommitStruct(t *testing.T) {
 	}
 
 	assert.Equal(t, "abc123def456", commit.SHA)
-	assert.Equal(t, "proj-1", commit.ProjectID)
+	assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000010"), commit.ProjectID)
 	assert.Equal(t, "main", commit.Branch)
 	assert.Equal(t, "Initial commit", commit.Message)
 	assert.Equal(t, "agent-123", commit.Author)

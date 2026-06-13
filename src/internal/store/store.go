@@ -146,13 +146,6 @@ type ExecutionStore interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string) (*model.Execution, error)
 }
 
-// AgentRunStore defines persistence operations for agent runs.
-type AgentRunStore interface {
-	Create(run *model.AgentRun) error
-	GetByID(id uuid.UUID) (*model.AgentRun, error)
-	List(filter AgentRunFilter) ([]*model.AgentRun, int, error)
-	Update(run *model.AgentRun) error
-}
 
 // AgentRunFilter holds optional query parameters for listing agent runs.
 type AgentRunFilter struct {
@@ -325,7 +318,6 @@ type Store interface {
 	Projects() ProjectStore
 	Agents() AgentStore
 	Capabilities() CapabilityStore
-	AgentRuns() AgentRunStore
 	Executions() ExecutionStore
 	Deliverables() DeliverableStore
 	// DeliverableVersions is the TASK-406 append-only history

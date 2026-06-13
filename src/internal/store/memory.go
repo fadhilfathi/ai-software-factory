@@ -20,7 +20,6 @@ type memoryStore struct {
 	usersEmail  map[string]*model.User
 	projects    map[string]*model.Project
 	agents      map[string]*model.Agent
-	agentRuns   map[string]*model.AgentRun
 	executions   map[string]*model.Execution
 	deliverables map[string]*model.Deliverable
 	// deliverableVersions is the TASK-406 append-only history
@@ -64,7 +63,6 @@ func NewMemoryStore() Store {
 		usersEmail:  make(map[string]*model.User),
 		projects:    make(map[string]*model.Project),
 		agents:      make(map[string]*model.Agent),
-		agentRuns:   make(map[string]*model.AgentRun),
 		executions:   make(map[string]*model.Execution),
 		deliverables: make(map[string]*model.Deliverable),
 		deliverableVersions:         make(map[string]*model.DeliverableVersion),
@@ -115,7 +113,6 @@ func (m *memoryStore) Users() UserStore             { return &memoryUserStore{m}
 func (m *memoryStore) Projects() ProjectStore        { return &memoryProjectStore{m} }
 func (m *memoryStore) Agents() AgentStore             { return &memoryAgentStore{m} }
 func (m *memoryStore) Capabilities() CapabilityStore  { return &memoryCapabilityStore{m} }
-func (m *memoryStore) AgentRuns() AgentRunStore       { return &memoryAgentRunStore{m} }
 func (m *memoryStore) Executions() ExecutionStore     { return &memoryExecutionStore{m} }
 func (m *memoryStore) Deliverables() DeliverableStore { return &memoryDeliverableStore{m} }
 func (m *memoryStore) DeliverableVersions() DeliverableVersionStore {
@@ -464,7 +461,7 @@ func (s *memoryAgentStore) List(_ context.Context, filter model.AgentFilter) (*m
 		if len(a.Metadata) > 0 {
 			buf := make([]byte, len(a.Metadata))
 			copy(buf, a.Metadata)
-			out.Metadata = buf
+			c.Metadata = buf
 		}
 		out = append(out, &c)
 	}
@@ -639,80 +636,6 @@ func (s *memoryCapabilityStore) List(_ context.Context, filter model.CapabilityF
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
 	}, nil
-}
-
-// --- Agent Run Store ---
-
-type memoryAgentRunStore struct{ m *memoryStore }
-
-func (s *memoryAgentRunStore) Create(r *model.AgentRun) error {
-	s.m.mu.Lock()
-	defer s.m.mu.Unlock()
-	if _, exists := s.m.agentRuns[r.ID.String()]; exists {
-		return ErrAlreadyExists
-	}
-	s.m.agentRuns[r.ID.String()] = r
-	return nil
-}
-
-func (s *memoryAgentRunStore) GetByID(id uuid.UUID) (*model.AgentRun, error) {
-	s.m.mu.RLock()
-	defer s.m.mu.RUnlock()
-	r, ok := s.m.agentRuns[id.String()]
-	if !ok {
-		return nil, ErrNotFound
-	}
-	return r, nil
-}
-
-func (s *memoryAgentRunStore) List(filter AgentRunFilter) ([]*model.AgentRun, int, error) {
-	s.m.mu.RLock()
-	defer s.m.mu.RUnlock()
-	var filtered []*model.AgentRun
-	for _, r := range s.m.agentRuns {
-		if filter.AgentID != uuid.Nil && r.AgentID != filter.AgentID {
-			continue
-		}
-		if filter.TaskID != uuid.Nil {
-			if r.TaskID == nil || *r.TaskID != filter.TaskID {
-				continue
-			}
-		}
-		if filter.Status != "" && string(r.Status) != filter.Status {
-			continue
-		}
-		filtered = append(filtered, r)
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
-	})
-	total := len(filtered)
-	page, limit := filter.Page, filter.Limit
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 20
-	}
-	start := (page - 1) * limit
-	if start >= len(filtered) {
-		return []*model.AgentRun{}, total, nil
-	}
-	end := start + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-	return filtered[start:end], total, nil
-}
-
-func (s *memoryAgentRunStore) Update(r *model.AgentRun) error {
-	s.m.mu.Lock()
-	defer s.m.mu.Unlock()
-	if _, ok := s.m.agentRuns[r.ID.String()]; !ok {
-		return ErrNotFound
-	}
-	s.m.agentRuns[r.ID.String()] = r
-	return nil
 }
 
 // --- Execution Store ---
@@ -1346,24 +1269,24 @@ type memoryDeploymentStore struct{ m *memoryStore }
 func (s *memoryDeploymentStore) Create(d *model.Deployment) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.deployments[d.ID]; exists {
+	if _, exists := s.m.deployments[d.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.deployments[d.ID] = d
+	s.m.deployments[d.ID.String()] = d
 	return nil
 }
 
-func (s *memoryDeploymentStore) GetByID(id string) (*model.Deployment, error) {
+func (s *memoryDeploymentStore) GetByID(id uuid.UUID) (*model.Deployment, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	d, ok := s.m.deployments[id]
+	d, ok := s.m.deployments[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
 	return d, nil
 }
 
-func (s *memoryDeploymentStore) ListByProject(projectID string) ([]*model.Deployment, error) {
+func (s *memoryDeploymentStore) ListByProject(projectID uuid.UUID) ([]*model.Deployment, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
 	var result []*model.Deployment
@@ -1381,10 +1304,10 @@ func (s *memoryDeploymentStore) ListByProject(projectID string) ([]*model.Deploy
 func (s *memoryDeploymentStore) Update(d *model.Deployment) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.deployments[d.ID]; !ok {
+	if _, ok := s.m.deployments[d.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.deployments[d.ID] = d
+	s.m.deployments[d.ID.String()] = d
 	return nil
 }
 
@@ -1395,17 +1318,17 @@ type memoryWebhookStore struct{ m *memoryStore }
 func (s *memoryWebhookStore) Create(w *model.Webhook) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, exists := s.m.webhooks[w.ID]; exists {
+	if _, exists := s.m.webhooks[w.ID.String()]; exists {
 		return ErrAlreadyExists
 	}
-	s.m.webhooks[w.ID] = w
+	s.m.webhooks[w.ID.String()] = w
 	return nil
 }
 
-func (s *memoryWebhookStore) GetByID(id string) (*model.Webhook, error) {
+func (s *memoryWebhookStore) GetByID(id uuid.UUID) (*model.Webhook, error) {
 	s.m.mu.RLock()
 	defer s.m.mu.RUnlock()
-	w, ok := s.m.webhooks[id]
+	w, ok := s.m.webhooks[id.String()]
 	if !ok {
 		return nil, ErrNotFound
 	}
@@ -1428,20 +1351,20 @@ func (s *memoryWebhookStore) List() ([]*model.Webhook, error) {
 func (s *memoryWebhookStore) Update(w *model.Webhook) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.webhooks[w.ID]; !ok {
+	if _, ok := s.m.webhooks[w.ID.String()]; !ok {
 		return ErrNotFound
 	}
-	s.m.webhooks[w.ID] = w
+	s.m.webhooks[w.ID.String()] = w
 	return nil
 }
 
-func (s *memoryWebhookStore) Delete(id string) error {
+func (s *memoryWebhookStore) Delete(id uuid.UUID) error {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	if _, ok := s.m.webhooks[id]; !ok {
+	if _, ok := s.m.webhooks[id.String()]; !ok {
 		return ErrNotFound
 	}
-	delete(s.m.webhooks, id)
+	delete(s.m.webhooks, id.String())
 	return nil
 }
 
@@ -1463,7 +1386,7 @@ func (s *memoryAuditLogStore) Create(l *model.AuditLog) error {
 // descending. The filter fields EntityType, EntityID, and UserID are optional;
 // when zero-valued they do not narrow the result set. Page and Limit fall
 // back to 1 and 20 respectively, matching the postgres implementation.
-func (s *memoryAuditLogStore) List(filter store.AuditLogFilter) ([]*model.AuditLog, int, error) {
+func (s *memoryAuditLogStore) List(filter AuditLogFilter) ([]*model.AuditLog, int, error) {
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
 	logs := make([]*model.AuditLog, 0, len(s.m.auditLogs))
