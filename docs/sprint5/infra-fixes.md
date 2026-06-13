@@ -149,8 +149,11 @@ whose scope was the buildx `cache-to` problem only):
 Added to the api service in `docker-compose.yml` (carryover from TASK-430 + Sprint 5 additions):
 
 ```yaml
-# TASK-430 (carryover): JWT secret must be set at runtime.
-JWT_SECRET:       ${JWT_SECRET:?JWT_SECRET must be set (see .env.example)}
+# TASK-430 (carryover): JWT secret signs and verifies JWTs.
+# PATH C AMENDMENT: a dev-only default is provided for non-prod use
+# (CI, local dev, integration tests). In production the operator MUST
+# override JWT_SECRET with a 32+ char random value.
+JWT_SECRET:       ${JWT_SECRET:-dev_only_secret_32_chars_minimum_for_local_testing}
 # Sprint 5: Aion Agent Runtime (TASK-501).
 AION_BINARY:           ${AION_BINARY:-/usr/local/bin/aion}
 AION_MODEL:            ${AION_MODEL:-MiniMax-M3}
@@ -191,7 +194,7 @@ These do not apply to the in-process Aion worker model.
 ### Files changed in TASK-512
 
 - `docker-compose.yml`
-  - Added `JWT_SECRET` (carryover from TASK-430, uses `${VAR:?msg}` to fail fast at startup if unset)
+  - Added `JWT_SECRET` (carryover from TASK-430; **PATH C AMENDMENT** uses `${VAR:-dev_default}` so CI / local dev / non-prod compose can boot without a secret. In production the operator MUST override with a 32+ char random value — see .env.example)
   - Added 7 `AION_*` primary vars (TASK-501 compat)
   - Added 3 `AGENT_*` runtime mode vars (Lead brief / security-01 C1)
 - `.env.example`

@@ -71,10 +71,13 @@ services:
       DB_NAME:          ${POSTGRES_DB:-project}
       REDIS_HOST:       redis
       REDIS_PORT:       ${REDIS_PORT:-6379}
-      # TASK-430 (carryover): JWT secret must be set at runtime or
-      # config.Load() panics. The ${VAR:?msg} form forces a startup
-      # error if the operator forgot to set it.
-      JWT_SECRET:       ${JWT_SECRET:?JWT_SECRET must be set (see .env.example)}
+      # TASK-430 (carryover): JWT secret signs and verifies JWTs.
+      # PATH C AMENDMENT: a dev-only default is provided for non-prod
+      # use (CI, local dev, integration tests). In production the
+      # operator MUST override JWT_SECRET with a 32+ char random value
+      # (see .env.example for the rotation pattern). The Go config
+      # enforces min-length 32 and panics on shorter values.
+      JWT_SECRET:       ${JWT_SECRET:-dev_only_secret_32_chars_minimum_for_local_testing}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
       # Sprint 5: Aion Agent Runtime (TASK-501).
       # In-process mode is the default for Sprint 5 (security-01 C1
