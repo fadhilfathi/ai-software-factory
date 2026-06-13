@@ -537,6 +537,14 @@ func (s *ExecutionService) IsValidExecutionStatus(st model.ExecutionStatus) bool
 	return model.IsValidExecutionStatus(st)
 }
 
+// TransitionTo is the internal alias for UpdateExecutionStatus used by
+// driveWorker and other state-machine drivers. Same signature and
+// semantics — the alias lets internal code use the more meaningful
+// "transition to" verb without breaking the handler-facing API.
+func (s *ExecutionService) TransitionTo(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string, callerProjectID uuid.UUID) (*model.Execution, error) {
+	return s.UpdateExecutionStatus(ctx, id, newStatus, errorMessage, callerProjectID)
+}
+
 // driveWorker is the TASK-501 runtime-driven worker driver. It
 // blocks on runtime.Wait for the spawned worker's handle, then
 // translates the WorkerResult into an execution status and
