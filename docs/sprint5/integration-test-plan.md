@@ -15,15 +15,21 @@ Design the E2E test harness for Sprint 5's real agent execution engine. The harn
 The harness solves the two problems Lead called out in the kickoff:
 
 1. **How to spawn a fake Aion CLI in tests** — answer: in-process `fakeRuntime` (Mode A, default) + subprocess `realRuntime` (Mode B, gated by `AION_E2E=1`)
-2. **How to wait for state transitions without sleep** — answer: state-manager event subscription via `Watch(id) <-chan StateEvent` (per TASK-503 design)
+2. **How to wait for state transitions without sleep** — answer: state-manager event subscription via `Watch(id) <-chan StateEvent` (per TASK-503 design; falls back to `assert.Eventually` polling until TASK-505/506 land `events.MemoryBus`)
+
+**Verified contract from TASK-501 (commit 5afc2ad on `feat/sprint-5-task-501-aion-runtime`):**
+- `aion.Runtime = {Spawn, Wait, Cancel, Close}` — NOT my sketched `{Spawn, Send, Recv, Cancel}`. The fake implements `Wait(handle) WorkerResult` (blocking call that returns the worker's final result) rather than a sync `Send`/`Recv` pair. The handshake pattern is implicit in `Wait()`.
+- `WorkerHandle` is an opaque `string` — callers don't introspect; they pass it back to `Wait`/`Cancel`.
+- `WorkerSpec` carries `ExecutionID, TaskID, AgentID, ProjectID, Model, Provider, PermissionMode, Attempt` — the project ID is in the spec, not a separate argument.
+- `WorkerStatus = pending|running|completed|failed|cancelled` (5 states, distinct from the 6-state `ExecutionStatus` for the state manager).
 
 ## 2. Two-mode runtime
 
 ### Mode A — `fakeRuntime` (in-process, default)
 
 - Implements `aion.Runtime` directly in Go. **No subprocess.**
-- Behavior controlled by a `FakeScript` — a list of `{Send, Recv, Delay, Error, Exit}` actions.
-- Honors the JSON-over-stdio protocol (TASK-504) so the in-process handler logic is the same as Mode B. Switching to Mode B is a single-line `realRuntime()` call, not a test rewrite.
+- Behavior controlled by a `FakeScript` — a list of `{Result, Delay, Error}` actions tied to `Wait()` calls.
+- Honors the same wire shape as TASK-501's `aion.Runtime` (verified at 5afc2ad: `{Spawn, Wait, Cancel, Close}`) so the in-process handler logic is the same as Mode B. Switching to Mode B is a single-line `realRuntime()` call, not a test rewrite.
 - Sub-second per test. The default for `go test`.
 
 **Sketch:**
@@ -58,7 +64,7 @@ func NewFakeRuntime(t testing.TB, script []FakeAction) aion.Runtime {
     return &fakeRuntime{t: t, script: script}
 }
 
-// Spawn/Recv/Error/Exit implemented by indexing into script[] and
+// Spawn/Wait/Cancel/Close implemented by indexing into script[] and
 // returning the configured action. State held in a map[Handle]int.
 ```
 
