@@ -33,7 +33,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return "dark";
   });
 
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  // Detect prefers-reduced-motion. Read the initial value once during
+  // render (not in an effect) to avoid a cascading render; the effect
+  // below only subscribes to subsequent changes.
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
   const [fontScale, setFontScale] = useState<FontScale>(() => {
     if (typeof window !== "undefined") {
       const stored = Number(localStorage.getItem(STORAGE_KEY_FONT));
@@ -56,9 +62,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Detect prefers-reduced-motion
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
-    setPrefersReducedMotion(mq.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);

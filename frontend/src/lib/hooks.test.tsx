@@ -5,7 +5,7 @@ import { useUpdateTaskStatus } from "./hooks";
 import { api } from "./api";
 import { queryKeys } from "./queryKeys";
 import { ReactNode } from "react";
-import type { Task } from "./types";
+import type { PaginatedResponse, Task } from "./types";
 
 vi.mock("./api", () => ({
   api: {
@@ -46,8 +46,8 @@ describe("useUpdateTaskStatus", () => {
     queryClient.setQueryData(queryKeys.tasks.list({ project_id: "proj-1" }), mockTasksList);
     queryClient.setQueryData(queryKeys.tasks.detail("task-1"), mockTask);
 
-    let rejectApi!: (reason?: any) => void;
-    (api.patch as any).mockImplementationOnce(() => new Promise((_, reject) => {
+    let rejectApi!: (reason?: unknown) => void;
+    vi.mocked(api.patch).mockImplementationOnce(() => new Promise((_, reject) => {
       rejectApi = reject;
     }));
 
@@ -58,11 +58,11 @@ describe("useUpdateTaskStatus", () => {
     });
 
     await waitFor(() => {
-      const updatedList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
-      expect(updatedList.data[0].status).toBe("in_progress");
+      const updatedList: PaginatedResponse<Task> | undefined = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
+      expect(updatedList?.data[0].status).toBe("in_progress");
 
-      const updatedDetail: any = queryClient.getQueryData(queryKeys.tasks.detail("task-1"));
-      expect(updatedDetail.status).toBe("in_progress");
+      const updatedDetail: Task | undefined = queryClient.getQueryData(queryKeys.tasks.detail("task-1"));
+      expect(updatedDetail?.status).toBe("in_progress");
     });
 
     act(() => {
@@ -73,11 +73,11 @@ describe("useUpdateTaskStatus", () => {
       expect(result.current.isError).toBe(true);
     });
 
-    const rolledBackList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
-    expect(rolledBackList.data[0].status).toBe("backlog");
+    const rolledBackList: PaginatedResponse<Task> | undefined = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
+    expect(rolledBackList?.data[0].status).toBe("backlog");
 
-    const rolledBackDetail: any = queryClient.getQueryData(queryKeys.tasks.detail("task-1"));
-    expect(rolledBackDetail.status).toBe("backlog");
+    const rolledBackDetail: Task | undefined = queryClient.getQueryData(queryKeys.tasks.detail("task-1"));
+    expect(rolledBackDetail?.status).toBe("backlog");
   });
 
   it("should optimistically update task status and persist on success", async () => {
@@ -85,9 +85,9 @@ describe("useUpdateTaskStatus", () => {
     queryClient.setQueryData(queryKeys.tasks.list({ project_id: "proj-1" }), mockTasksList);
     queryClient.setQueryData(queryKeys.tasks.detail("task-1"), mockTask);
 
-    let resolveApi!: (value: any) => void;
+    let resolveApi!: (value: unknown) => void;
     const updatedTask = { ...mockTask, status: "in_progress" };
-    (api.patch as any).mockImplementationOnce(() => new Promise((resolve) => {
+    vi.mocked(api.patch).mockImplementationOnce(() => new Promise((resolve) => {
       resolveApi = resolve;
     }));
 
@@ -98,8 +98,8 @@ describe("useUpdateTaskStatus", () => {
     });
 
     await waitFor(() => {
-      const updatedList: any = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
-      expect(updatedList.data[0].status).toBe("in_progress");
+      const updatedList: PaginatedResponse<Task> | undefined = queryClient.getQueryData(queryKeys.tasks.list({ project_id: "proj-1" }));
+      expect(updatedList?.data[0].status).toBe("in_progress");
     });
 
     act(() => {
