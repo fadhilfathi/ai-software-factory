@@ -53,6 +53,38 @@ func notFound(message string) *Error {
 	}
 }
 
+// forbidden returns a 403 *Error. Reserved for role-mismatch
+// rejections (F-021 / TASK-425). For cross-tenant misses use
+// crossTenantBlocked() instead, so the existence of the resource
+// in another project is not leaked.
+func forbidden(message string) *Error {
+	return &Error{Status: http.StatusForbidden, Code: "FORBIDDEN", Message: message}
+}
+
+// crossTenantBlocked returns a 404 *Error. Used when the caller
+// is authenticated to a different project than the resource. Per
+// the Sprint 5 design (Security-01, Lead-accepted 2026-06-13),
+// the miss is reported as 404 with code CROSS_TENANT_BLOCKED so
+// the existence of the resource in another project is not leaked.
+func crossTenantBlocked() *Error {
+	return &Error{
+		Status:  http.StatusNotFound,
+		Code:    "CROSS_TENANT_BLOCKED",
+		Message: "resource not found in caller's project",
+	}
+}
+
+// missingProjectHeader returns a 400 *Error. Used when the
+// X-Project-ID header (or path-implied project) is absent on a
+// route that requires project scoping.
+func missingProjectHeader() *Error {
+	return &Error{
+		Status:  http.StatusBadRequest,
+		Code:    "MISSING_PROJECT_HEADER",
+		Message: "X-Project-ID header is required for this request",
+	}
+}
+
 func conflict(message string) *Error {
 	return &Error{
 		Status:  http.StatusConflict,
