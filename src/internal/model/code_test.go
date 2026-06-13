@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,14 +15,11 @@ func TestCodeGenStatusConstants(t *testing.T) {
 }
 
 func TestCodeGenRequestStruct(t *testing.T) {
-	id := uuid.New()
-	projectID := uuid.New()
-	taskID := uuid.New()
 	now := time.Now().UTC()
 	req := CodeGenRequest{
-		ID:            id,
-		ProjectID:     projectID,
-		TaskID:        taskID,
+		ID:            "codegen-123",
+		ProjectID:     "proj-456",
+		TaskID:        "task-789",
 		Specification: "Create a REST API",
 		Files:         []string{"main.go", "handler.go"},
 		Status:        CodeGenGenerating,
@@ -32,9 +28,9 @@ func TestCodeGenRequestStruct(t *testing.T) {
 		UpdatedAt:     now,
 	}
 
-	assert.Equal(t, id, req.ID)
-	assert.Equal(t, projectID, req.ProjectID)
-	assert.Equal(t, taskID, req.TaskID)
+	assert.Equal(t, "codegen-123", req.ID)
+	assert.Equal(t, "proj-456", req.ProjectID)
+	assert.Equal(t, "task-789", req.TaskID)
 	assert.Equal(t, "Create a REST API", req.Specification)
 	assert.Equal(t, []string{"main.go", "handler.go"}, req.Files)
 	assert.Equal(t, CodeGenGenerating, req.Status)
@@ -44,10 +40,9 @@ func TestCodeGenRequestStruct(t *testing.T) {
 }
 
 func TestProjectFileStruct(t *testing.T) {
-	projectID := uuid.New()
 	now := time.Now().UTC()
 	file := ProjectFile{
-		ProjectID:    projectID,
+		ProjectID:    "proj-1",
 		Path:         "src/main.go",
 		Content:      "package main\n\nfunc main() {}\n",
 		Language:     "go",
@@ -56,7 +51,7 @@ func TestProjectFileStruct(t *testing.T) {
 		ModifiedBy:   "agent-123",
 	}
 
-	assert.Equal(t, projectID, file.ProjectID)
+	assert.Equal(t, "proj-1", file.ProjectID)
 	assert.Equal(t, "src/main.go", file.Path)
 	assert.Equal(t, "package main\n\nfunc main() {}\n", file.Content)
 	assert.Equal(t, "go", file.Language)
@@ -66,11 +61,10 @@ func TestProjectFileStruct(t *testing.T) {
 }
 
 func TestCommitStruct(t *testing.T) {
-	projectID := uuid.New()
 	now := time.Now().UTC()
 	commit := Commit{
 		SHA:       "abc123def456",
-		ProjectID: projectID,
+		ProjectID: "proj-1",
 		Branch:    "main",
 		Message:   "Initial commit",
 		Author:    "agent-123",
@@ -82,7 +76,7 @@ func TestCommitStruct(t *testing.T) {
 	}
 
 	assert.Equal(t, "abc123def456", commit.SHA)
-	assert.Equal(t, projectID, commit.ProjectID)
+	assert.Equal(t, "proj-1", commit.ProjectID)
 	assert.Equal(t, "main", commit.Branch)
 	assert.Equal(t, "Initial commit", commit.Message)
 	assert.Equal(t, "agent-123", commit.Author)

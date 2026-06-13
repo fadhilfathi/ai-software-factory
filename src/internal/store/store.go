@@ -148,10 +148,10 @@ type ExecutionStore interface {
 
 // AgentRunStore defines persistence operations for agent runs.
 type AgentRunStore interface {
-	Create(run *model.Execution) error
-	GetByID(id uuid.UUID) (*model.Execution, error)
-	List(filter AgentRunFilter) ([]*model.Execution, int, error)
-	Update(run *model.Execution) error
+	Create(run *model.AgentRun) error
+	GetByID(id uuid.UUID) (*model.AgentRun, error)
+	List(filter AgentRunFilter) ([]*model.AgentRun, int, error)
+	Update(run *model.AgentRun) error
 }
 
 // AgentRunFilter holds optional query parameters for listing agent runs.
