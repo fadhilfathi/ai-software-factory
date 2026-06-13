@@ -8,6 +8,36 @@ It covers the architecture, the JSON-over-stdio protocol envelope, the
 dual-mode runtime, the configuration knobs, and the deliberate "in-memory
 only" scope cut for Sprint 5.
 
+## 0. Design decisions (Q3)
+
+The Lead's Q3 broadcast (2026-06-14) locked the Aion runtime connection model.
+This section is authoritative for Sprint 5+ work and is intentionally at the
+top so Sprint 6+ readers see it first.
+
+### 0.1 Runtime connection paths
+
+| Path | Mechanism | Status in Sprint 5 | Sprint 6+ plan |
+|------|-----------|--------------------|----------------|
+| **SDK (primary)** | In-process Go SDK imported as a module (`aion` Go package) | **NOT IMPORTED.** SDK package not in `go.mod`. | Import `github.com/aion-labs/aion-go` (TBD), wire as `aion.SDKRuntime`, retire `ProcessRuntime`'s os/exec path. |
+| **CLI shim (fallback)** | Subprocess: `os/exec` of `aion` binary + JSON-over-stdio | **WIRED in `service.go` but UNUSABLE.** No `aion` binary on PATH anywhere. | Keep as the fallback for environments where the Go SDK cannot be linked (e.g. aion CLI released ahead of SDK). |
+| **Mock (Sprint 5 canonical)** | In-process goroutine, `FakeScript`-driven | **CANONICAL.** This is what actually runs in Sprint 5 dev, tests, and CI. | Keep as the test/dev default. Pattern matches `docker/client` import at `internal/orchestrator/orchestrator.go:33`. |
+
+### 0.2 Sprint 5 reality check
+
+- No `aion` binary exists on `$PATH` in dev, CI, or production today.
+- `service.go` wires `aion.NewProcessRuntime(aion.ProcessRuntimeConfig{})` for production, but that constructor will fail at first `Spawn` because the `aion` binary is missing. The `AION_E2E=1` env var is the only path that flips to `ProcessRuntime` in CI; that path is expected to fail-fast in Sprint 5.
+- The `MockRuntime` (in-process, `FakeScript`-driven) is the **canonical test impl for Sprint 5**. All Sprint 5 tests, dev mode, and the canonical CI run use it. The Q3 design says "the Sprint 5 test impl stays as `MockRuntime`" — this is a feature, not a workaround.
+- The Q3 design's stated motivation: "matches the docker/client pattern at `orchestrator.go:33`". Docker's runtime is imported as a Go SDK (`github.com/docker/docker/client`) and the CLI shim is a fallback for debugging; Sprint 5 mirrors that posture.
+
+### 0.3 Sprint 6+ work item (open)
+
+Add a real Go SDK import to `go.mod` and replace `ProcessRuntime` with an
+`SDKRuntime` whose `Spawn`/`Wait`/`Cancel`/`Close` call into the SDK directly
+(no subprocess). The `aion.Runtime` interface, `model.Worker`, the
+`WorkerStore`, and the `ExecutionService` integration are all already in
+their final Sprint 6+ shape — only the runtime backend swaps. See §11
+question 4.
+
 ## 1. Why this exists
 
 Sprint 4's `execution.go` shipped with a hand-rolled `mockExecution`
@@ -415,6 +445,16 @@ entry doesn't leak into the Aion spec. Migration:
    see nil values. The TASK-505 deliverable-capture consumer needs
    it to correlate. Default: yes, expose.
 
+4. **Q3 design — Sprint 6+ SDK import.** Per Lead's Q3 broadcast, the primary
+   runtime path is an in-process Go SDK (`github.com/aion-labs/aion-go`, TBD).
+   Sprint 5 does NOT import it. Should Sprint 6 land this as a dedicated
+   task (TASK-XXX: Replace ProcessRuntime with SDKRuntime), or fold it into
+   TASK-502/TASK-507 follow-ups? The `aion.Runtime` interface, `model.Worker`,
+   `WorkerStore`, and the `ExecutionService` integration are all already in
+   their final Sprint 6+ shape — only the runtime backend swaps. Q3 also
+   notes "no aion binary on PATH anywhere, so the MockRuntime is the canonical
+   test impl for Sprint 5" — see §0 above.
+
 ## 12. References
 
 - Lead's brief: `docs/sprint5/brief.md` §5 (TASK-501)
@@ -424,3 +464,6 @@ entry doesn't leak into the Aion spec. Migration:
   callerProjectID threading continues to apply)
 - Sprint 4 closeout: TASK-405 mock-goroutine in `execution.go:290-335`
   (the body that's now replaced by the runtime-driven path)
+- Q3 design rationale: `internal/orchestrator/orchestrator.go:33`
+  (the `docker/client` Go-SDK pattern Q3 cites as the model for the Aion
+  in-process SDK path)
