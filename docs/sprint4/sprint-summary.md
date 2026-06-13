@@ -3,7 +3,7 @@
 **Sprint**: 4
 **Dates**: 2026-06-08 → 2026-06-12
 **Repo**: https://github.com/fadhilfathi/ai-software-factory.git
-**Sprint commit**: *TBD — filled in by TASK-415 (`feat(sprint-4): agent orchestration engine`)*
+**Sprint commit**: `ebeba6b32a0c03ca5ab2095264eb46dd40264268` — `feat(sprint-4): agent orchestration engine` (squash-merge of PR #1, 2026-06-13T06:34:18Z)
 
 ---
 
@@ -61,7 +61,7 @@ Sprint 4 delivered the Agent Orchestration Engine end-to-end: agent registry wit
 | 412   | Security Review                  | Security-01   | completed  | §7.2.1 waiver text for F-013..F-016 (cross-tenant data-model deferral); §7.2.2 partial-waiver text for F-014 (authz-narrowed) |
 | 413   | Infrastructure Validation        | DevOps-01     | completed  | 3 fixes: missing `wget` in both Dockerfiles (healthcheck would always fail); duplicate migration version "008" (schema_migrations PK collision); `.env.example` missing 12 env vars the app reads (incl. JWT_SECRET, DB_*) |
 | 414   | Pre-Commit Quality Gate          | DevOps-01     | completed  | CI gate on ubuntu-latest, 14 steps; graceful shutdown wired in `cmd/main.go` (signal.Notify SIGINT+SIGTERM, `http.Server` wrapper, `svc.Execution.Shutdown(graceCtx)` joined with `srv.Shutdown(graceCtx)` under shared `SHUTDOWN_GRACE` budget) |
-| 415   | GitHub Automation & Closeout     | DevOps-01     | pending    | `feat(sprint-4): agent orchestration engine` commit + `git push origin main` + `gh repo view` verification |
+| 415   | GitHub Automation & Closeout     | DevOps-01     | completed  | PR #1 squash-merged to `main` as commit `ebeba6b` at 2026-06-13T06:34:18Z |
 | 416   | Migration conflict fix (010/015) | DevOps-01     | completed  | JSONB canonical for `capabilities`; `role`/`provider` types aligned across 010/015; `data-model.md` and `database.md` updated; "KEEP IN SYNC" header comments on both migrations |
 | 417   | Patch auth.go — JWT role         | Developer-01  | completed  | F-001 closed in-patch: JWT now reads role from DB instead of hardcoded "user" |
 | 418   | Patch middleware.go — api-key    | Developer-01  | completed  | F-002 closed in-patch: real API-key validation, not just `api_*` prefix check |
@@ -126,8 +126,15 @@ Sprint 4 delivered the Agent Orchestration Engine end-to-end: agent registry wit
 
 ---
 
-## Sprint 4 closeout commit (TBD — TASK-415)
+## Sprint 4 closeout commit (TASK-415 — completed)
 
-Single `feat(sprint-4): agent orchestration engine` commit, pushed to `https://github.com/fadhilfathi/ai-software-factory.git` on `main`. The CI run on the push is the final proof that the sprint is closed. Verify with `gh repo view` and report the final commit SHA back to the Lead.
+Single `feat(sprint-4): agent orchestration engine` commit, squashed and merged into `main` as PR #1.
 
-*Final commit SHA, CI run link, and `TESTER APPROVED` timestamp filled in after TASK-415 lands.*
+- **Final commit SHA on `main`**: `ebeba6b32a0c03ca5ab2095264eb46dd40264268`
+- **Merged at**: 2026-06-13T06:34:18Z
+- **PR**: https://github.com/fadhilfathi/ai-software-factory/pull/1
+- **Post-merge Sprint Quality Gate**: ✅ pass — run [27459209339](https://github.com/fadhilfathi/ai-software-factory/actions/runs/27459209339) (5m44s)
+- **Post-merge CI**: ✅ pass — run [27459209335](https://github.com/fadhilfathi/ai-software-factory/actions/runs/27459209335) (e2e-smoke non-blocking; see TASK-426)
+- **Post-merge Deploy**: ❌ fail — run [27459209340](https://github.com/fadhilfathi/ai-software-factory/actions/runs/27459209340) — `docker/build-push-action@v6` buildx `cache-to` GHA backend error. Filed as Sprint 5 TASK-429; does not block Sprint 4 closeout (Deploy is not in the Sprint 4 closeout gate).
+- **`gh repo view` verification**: `ai-software-factory` / `defaultBranchRef.name = main` / no `latestRelease` yet.
+- **Branch cleanup**: `feat/sprint-4-closeout` kept (per `--delete-branch=false` in TASK-415) so the closeout history is preserved for audit.
