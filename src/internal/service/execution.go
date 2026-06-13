@@ -350,11 +350,6 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 		// Record the worker row. PID is only available for the
 		// process runtime; the mock runtime leaves it zero.
 		var pid *int
-		var pid *int
-			if p := h.PID(); p > 0 {
-				pid = &p
-			}
-		}
 		worker := &model.Worker{
 			ID:             uuid.New(),
 			ExecutionID:    exec.ExecutionID,
