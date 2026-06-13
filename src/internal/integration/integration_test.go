@@ -29,6 +29,8 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/handler"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/integration"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -66,7 +68,7 @@ func newIntegrationRouter(t *testing.T, s integration.Store) *IntegrationTestEnv
 	agentSvc := service.NewAgentService(s)
 	taskSvc := service.NewTaskService(s, log)
 	assignmentSvc := service.NewAssignmentService(s, capSvc, log)
-	execSvc := service.NewExecutionService(s, log, nil)
+	execSvc := service.NewExecutionService(s, log, nil, nil, aion.NewMockRuntime()) // TASK-501: in-process mock for integration tests
 	delivSvc := service.NewDeliverableService(s, log)
 
 	r := gin.New()

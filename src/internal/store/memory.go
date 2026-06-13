@@ -54,6 +54,13 @@ type memoryStore struct {
 	// Powers GetActiveByTask in O(1). The index is updated under the
 	// store's mutex inside Create/Update.
 	activeAssignmentByTask map[string]string
+	// workers is the TASK-501 in-memory worker record store. Keyed
+	// by worker.ID for O(1) GetByID. The agent_id index powers
+	// ListByAgent, and the execution_id index powers ListByExecution.
+	// All three are maintained under the store's mutex.
+	workers                map[string]*model.Worker
+	workerByAgent          map[string][]string // agent_id → []worker_id (in insertion order)
+	workerByExecution      map[string][]string // execution_id → []worker_id (in insertion order)
 }
 
 // NewMemoryStore creates a new in-memory store ready for use.
@@ -84,6 +91,10 @@ func NewMemoryStore() Store {
 		// TASK-404: assignments current-state table.
 		assignments:             make(map[string]*model.Assignment),
 		activeAssignmentByTask: make(map[string]string),
+		// TASK-501: Aion runtime worker record store (in-memory only).
+		workers:           make(map[string]*model.Worker),
+		workerByAgent:     make(map[string][]string),
+		workerByExecution: make(map[string][]string),
 	}
 	// Seed the 6 canonical capabilities from data-model.md §2 so the
 	// in-memory store behaves the same as a fresh Postgres install
@@ -115,6 +126,7 @@ func (m *memoryStore) Agents() AgentStore             { return &memoryAgentStore
 func (m *memoryStore) Capabilities() CapabilityStore  { return &memoryCapabilityStore{m} }
 func (m *memoryStore) Executions() ExecutionStore     { return &memoryExecutionStore{m} }
 func (m *memoryStore) Deliverables() DeliverableStore { return &memoryDeliverableStore{m} }
+func (m *memoryStore) Workers() WorkerStore                { return &memoryWorkerStore{m} }
 func (m *memoryStore) DeliverableVersions() DeliverableVersionStore {
 	return &memoryDeliverableVersionStore{m}
 }
@@ -1668,3 +1680,156 @@ func (s *memoryTokenStore) Delete(key string) error {
 	return nil
 }
 
+
+// --- TASK-501 WorkerStore (in-memory) -------------------------------
+
+// memoryWorkerStore is the in-memory implementation of WorkerStore
+// for Sprint 5. Persistence is the same RWMutex-protected map pattern
+// used by every other memory sub-store. Cancellation lives in the
+// runtime, not the store — the store only records worker rows.
+type memoryWorkerStore struct{ m *memoryStore }
+
+// Create inserts a new worker row. Auto-fills ID, StartedAt, and
+// (in the rare case the caller forgot) Status. Returns the stored
+// (mutated) row.
+func (s *memoryWorkerStore) Create(ctx context.Context, w *model.Worker) (*model.Worker, error) {
+	if w == nil {
+		return nil, ErrInvalidInput
+	}
+	if w.ID == uuid.Nil {
+		w.ID = uuid.New()
+	}
+	if w.StartedAt.IsZero() {
+		now := time.Now().UTC()
+		w.StartedAt = &now
+	}
+	if w.Status == "" {
+		w.Status = model.WorkerPending
+	}
+	if !model.IsValidWorkerStatus(w.Status) {
+		return nil, ErrInvalidInput
+	}
+	if w.ExecutionID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+	if w.AgentID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+	if w.ProjectID == uuid.Nil {
+		return nil, ErrInvalidInput
+	}
+
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+
+	stored := *w
+	s.m.workers[stored.ID.String()] = &stored
+	s.m.workerByAgent[stored.AgentID.String()] = append(s.m.workerByAgent[stored.AgentID.String()], stored.ID.String())
+	s.m.workerByExecution[stored.ExecutionID.String()] = append(s.m.workerByExecution[stored.ExecutionID.String()], stored.ID.String())
+	return &stored, nil
+}
+
+// GetByID returns the worker by primary key, or ErrNotFound.
+func (s *memoryWorkerStore) GetByID(ctx context.Context, id uuid.UUID) (*model.Worker, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	w, ok := s.m.workers[id.String()]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	out := *w
+	return &out, nil
+}
+
+// ListByExecution returns all workers for an execution, ordered by
+// insertion (oldest first). Returns an empty slice (not nil) when
+// there are no rows, so handlers can JSON-encode it as [].
+func (s *memoryWorkerStore) ListByExecution(ctx context.Context, executionID uuid.UUID) ([]*model.Worker, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	ids := s.m.workerByExecution[executionID.String()]
+	out := make([]*model.Worker, 0, len(ids))
+	for _, id := range ids {
+		if w, ok := s.m.workers[id]; ok {
+			copy := *w
+			out = append(out, &copy)
+		}
+	}
+	return out, nil
+}
+
+// ListByAgent returns all workers for an agent, ordered by insertion
+// (oldest first). Returns an empty slice (not nil) when there are no
+// rows, mirroring ListByExecution semantics.
+func (s *memoryWorkerStore) ListByAgent(ctx context.Context, agentID uuid.UUID) ([]*model.Worker, error) {
+	s.m.mu.RLock()
+	defer s.m.mu.RUnlock()
+	ids := s.m.workerByAgent[agentID.String()]
+	out := make([]*model.Worker, 0, len(ids))
+	for _, id := range ids {
+		if w, ok := s.m.workers[id]; ok {
+			copy := *w
+			out = append(out, &copy)
+		}
+	}
+	return out, nil
+}
+
+// Update mutates an existing row. The caller is expected to populate
+// CompletedAt and the terminal status (completed/failed/cancelled) on
+// the row. Returns ErrNotFound if the worker ID is unknown.
+func (s *memoryWorkerStore) Update(ctx context.Context, w *model.Worker) error {
+	if w == nil {
+		return ErrInvalidInput
+	}
+	if w.ID == uuid.Nil {
+		return ErrInvalidInput
+	}
+	if !model.IsValidWorkerStatus(w.Status) {
+		return ErrInvalidInput
+	}
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	existing, ok := s.m.workers[w.ID.String()]
+	if !ok {
+		return ErrNotFound
+	}
+	*existing = *w
+	return nil
+}
+
+// Delete removes a worker row by primary key. Not used by the runtime
+// (cancellations are kept as rows for audit), but exposed to satisfy
+// the WorkerStore interface and for test cleanup.
+func (s *memoryWorkerStore) Delete(ctx context.Context, id uuid.UUID) error {
+	s.m.mu.Lock()
+	defer s.m.mu.Unlock()
+	w, ok := s.m.workers[id.String()]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(s.m.workers, id.String())
+	// Note: the per-agent and per-execution slices are NOT compacted
+	// on delete; the slice entries become stale pointers that
+	// ListByExecution/ListByAgent filter out via the map lookup. This
+	// is the same lazy-cleanup pattern used by assignmentByTask.
+	if list := s.m.workerByExecution[w.ExecutionID.String()]; len(list) > 0 {
+		filtered := list[:0]
+		for _, x := range list {
+			if x != id.String() {
+				filtered = append(filtered, x)
+			}
+		}
+		s.m.workerByExecution[w.ExecutionID.String()] = filtered
+	}
+	if list := s.m.workerByAgent[w.AgentID.String()]; len(list) > 0 {
+		filtered := list[:0]
+		for _, x := range list {
+			if x != id.String() {
+				filtered = append(filtered, x)
+			}
+		}
+		s.m.workerByAgent[w.AgentID.String()] = filtered
+	}
+	return nil
+}
