@@ -73,7 +73,7 @@ func TestReviewStruct(t *testing.T) {
 			{Severity: "medium", File: "handler.go", Line: 20, Message: "Missing validation"},
 		},
 		Metrics: &ReviewMetrics{
-			Complexity:   "low",
+			Complexity:   3,
 			TestCoverage: 90.0,
 			Duplications: 0,
 		},
@@ -92,7 +92,7 @@ func TestReviewStruct(t *testing.T) {
 	assert.Len(t, review.Issues, 2)
 	assert.Equal(t, "low", review.Issues[0].Severity)
 	assert.NotNil(t, review.Metrics)
-	assert.Equal(t, "low", review.Metrics.Complexity)
+	assert.Equal(t, 3, review.Metrics.Complexity)
 	assert.Equal(t, 90.0, review.Metrics.TestCoverage)
 	assert.Equal(t, now.Add(-time.Hour), review.CreatedAt)
 	assert.Equal(t, now, review.UpdatedAt)
