@@ -31,11 +31,11 @@ const (
 )
 
 const (
-	PriorityLow      TaskPriority = 1
-	PriorityMedium   TaskPriority = 2
-	PriorityHigh     TaskPriority = 3
-	PriorityCritical TaskPriority = 4
-	PriorityNormal   TaskPriority = 2 // alias for PriorityMedium (legacy code)
+	PriorityLow      TaskPriority = "low"
+	PriorityMedium   TaskPriority = "medium"
+	PriorityHigh     TaskPriority = "high"
+	PriorityCritical TaskPriority = "critical"
+	PriorityNormal   TaskPriority = "medium" // alias for PriorityMedium (legacy code)
 )
 
 // Task represents a unit of work within a project.
