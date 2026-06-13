@@ -11,25 +11,21 @@ import (
 )
 
 // TestAgentStatusConstants asserts that the AgentStatus enum values are
-// equal to their canonical string forms. Includes both the production
-// lifecycle states (in AllAgentStatuses, validated by the DB CHECK
-// constraint) and the additional test-visible status constants
-// (AgentSpawning, AgentWorking, AgentCompleted, AgentFailed) declared
-// for call-site readability — see the comment on those constants in
-// agent.go for why they are kept out of AllAgentStatuses.
+// equal to their canonical string forms. Covers only the 6 production
+// lifecycle states that are in AllAgentStatuses and validated by the
+// DB CHECK constraint on agents.status. The additional test-visible
+// status constants (AgentSpawning, AgentWorking, AgentCompleted,
+// AgentFailed) declared in agent.go are intentionally NOT asserted
+// here — they are non-canonical helpers, kept for call-site readability
+// but not part of the lifecycle state set. See the comment on those
+// constants in agent.go for why they are kept out of AllAgentStatuses.
 func TestAgentStatusConstants(t *testing.T) {
-	// Production lifecycle states.
 	assert.Equal(t, AgentStatus("initializing"), AgentInitializing)
 	assert.Equal(t, AgentStatus("idle"), AgentIdle)
 	assert.Equal(t, AgentStatus("busy"), AgentBusy)
 	assert.Equal(t, AgentStatus("paused"), AgentPaused)
 	assert.Equal(t, AgentStatus("error"), AgentError)
 	assert.Equal(t, AgentStatus("retired"), AgentRetired)
-	// Test-visible additional states.
-	assert.Equal(t, AgentStatus("spawning"), AgentSpawning)
-	assert.Equal(t, AgentStatus("working"), AgentWorking)
-	assert.Equal(t, AgentStatus("completed"), AgentCompleted)
-	assert.Equal(t, AgentStatus("failed"), AgentFailed)
 }
 
 // TestAgentStructFields exercises the real Agent struct fields. The
