@@ -1,10 +1,6 @@
 package service
 
 import (
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
