@@ -27,6 +27,15 @@ const (
 	TaskReview     TaskStatus = "review"
 	TaskDone       TaskStatus = "done"
 	TaskBlocked    TaskStatus = "blocked"
+	TaskOpen       TaskStatus = "open"
+)
+
+const (
+	PriorityLow      TaskPriority = 1
+	PriorityMedium   TaskPriority = 2
+	PriorityHigh     TaskPriority = 3
+	PriorityCritical TaskPriority = 4
+	PriorityNormal   TaskPriority = 2 // alias for PriorityMedium (legacy code)
 )
 
 // Task represents a unit of work within a project.
