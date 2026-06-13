@@ -5,13 +5,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/validation"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// userIDKey is the context key for the authenticated user's ID.
+// Mirrors middleware.UserIDKey but defined locally to avoid an import cycle
+// (middleware -> router -> handler -> service). Sprint 5: extract to a
+// shared contextkey package.
+const userIDKey = "user_id"
 
 // CodeService handles code generation and file management.
 type CodeService struct {
@@ -25,7 +30,7 @@ func NewCodeService(s store.Store, log *zap.Logger) *CodeService {
 
 // getUserID extracts the user ID from context
 func (s *CodeService) getUserID(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(middleware.UserIDKey).(string)
+	userID, ok := ctx.Value(userIDKey).(string)
 	return userID, ok
 }
 
