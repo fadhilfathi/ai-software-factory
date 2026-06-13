@@ -454,7 +454,7 @@ func truncate(b []byte, n int) string {
 
 func TestDeliverableHandler_Create_CrossTenant_Returns404(t *testing.T) {
 	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, _ := seedDelivTaskAndAgent(t, s)
 
 	// Caller in a different project asks to create against a task they don't own.
 	otherProjectID := uuid.New()
