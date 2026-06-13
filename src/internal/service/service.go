@@ -63,9 +63,6 @@ func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.
 		Sandbox:      sandbox,
 		Log:          log,
 	}
-		Orchestrator: orch,
-		Sandbox:      sandbox,
-	}
 }
 
 var taskStatusTransitions = map[model.TaskStatus][]model.TaskStatus{
