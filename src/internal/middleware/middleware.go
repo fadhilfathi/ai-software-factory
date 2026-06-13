@@ -109,6 +109,43 @@ func RequireRole(requiredRole string) gin.HandlerFunc {
 	}
 }
 
+// RequireAnyRole ensures the authenticated user has at least one of the
+// supplied roles. Use this for the "developer OR admin can write" pattern
+// where multiple non-viewer roles share a capability. RequireRole is the
+// stricter single-role variant; RequireAnyRole is the OR-semantics variant.
+//
+// TASK-425 (F-021): the role-route matrix needs both an admin-only branch
+// (e.g. DELETE /v1/projects/:id, POST /v1/users/register) and a write branch
+// (developer+admin) that should block viewer-role tokens. The matrix lives in
+// router.go; this primitive is the building block.
+func RequireAnyRole(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get(RoleKey)
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": gin.H{"code": "FORBIDDEN", "message": "Insufficient permissions"},
+			})
+			return
+		}
+		roleStr, ok := role.(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": gin.H{"code": "FORBIDDEN", "message": "Insufficient permissions"},
+			})
+			return
+		}
+		for _, r := range roles {
+			if roleStr == r {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": gin.H{"code": "FORBIDDEN", "message": "Insufficient permissions"},
+		})
+	}
+}
+
 // RequestID attaches a unique ID to every request and sets the X-Request-ID header.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
