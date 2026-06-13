@@ -3,6 +3,7 @@ package service
 import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/events"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"go.uber.org/zap"
@@ -25,9 +26,23 @@ type Services struct {
 	Orchestrator AgentOrchestrator
 	Sandbox      *SandboxService
 	Log          *zap.Logger
+
+	// Bus (TASK-503 Sprint 5, minimal): the in-process event bus,
+	// instantiated in main.go and threaded through here. The
+	// ExecutionService does NOT yet read it (the publish-on-
+	// transition refactor is Sprint 6 per Lead's dispatch
+	// 2026-06-14); it is exposed so future TASK-501/TASK-505/
+	// TASK-506 code can subscribe and publish without having
+	// to add a new constructor parameter. nil is allowed at
+	// construction time but main.go always wires a real bus.
+	Bus events.Bus
 }
 
-func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.Config) *Services {
+// New constructs the full service container. The bus argument
+// (TASK-503, Sprint 5 minimal) is stored on Services.Bus for
+// future publishers; the ExecutionService does not read it yet.
+// See the struct comment on Bus.
+func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.Config, bus events.Bus) *Services {
 	// CapabilityService: takes a store.Store so the TASK-403
 	// ValidateAgentHasCapabilities seam can read the live
 	// agent_capabilities join table.
@@ -63,6 +78,7 @@ func New(s store.Store, apiKeys store.APIKeyStore, log *zap.Logger, cfg *config.
 		Orchestrator: orch,
 		Sandbox:      sandbox,
 		Log:          log,
+		Bus:          bus,
 	}
 }
 

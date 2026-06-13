@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/events"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/logger"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
@@ -65,7 +66,15 @@ func main() {
 		logger.Info("Using in-memory store (no DB_HOST set)")
 	}
 
-	svc := service.New(st, buildAPIKeyStore(), logger, cfg)
+	// TASK-503 (Sprint 5, minimal): instantiate the in-process event bus
+	// and pass it into the Services container. The bus is NOT yet wired
+	// into the ExecutionService itself (that refactor is Sprint 6 per
+	// Lead's dispatch 2026-06-14); it is stored on Services.Bus so future
+	// TASK-501/TASK-505/TASK-506 code can publish and subscribe without
+	// having to thread a new dependency through the constructor chain.
+	bus := events.NewMemoryBus()
+
+	svc := service.New(st, buildAPIKeyStore(), logger, cfg, bus)
 	corsMW := middleware.CORSConfig{
 		AllowedOrigins:   cfg.CORS.AllowedOrigins,
 		AllowedMethods:   cfg.CORS.AllowedMethods,
