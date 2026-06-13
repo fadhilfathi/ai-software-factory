@@ -49,7 +49,7 @@ func seedTaskAndAgent(
 	ctx := context.Background()
 
 	// Task (skip the TaskService and write directly through the
-	// store — we want the minimum data needed to exercise the
+	// store â€” we want the minimum data needed to exercise the
 	// assignment path).
 	task := &model.Task{
 		ID:        uuid.New(),
@@ -81,7 +81,7 @@ func seedTaskAndAgent(
 
 // setAgentStatus forces an agent into the requested lifecycle
 // state. Used by the not-idle test where we need to simulate an
-// agent that's already busy. Bypasses the state machine — the
+// agent that's already busy. Bypasses the state machine â€” the
 // service-layer guard is what we're testing, not the store's
 // transition table.
 func setAgentStatus(t *testing.T, s store.Store, agentID uuid.UUID, status model.AgentStatus) {
@@ -223,7 +223,7 @@ func TestAssignTaskToAgent_Idempotent(t *testing.T) {
 	require.Nil(t, apiErr)
 	require.NotNil(t, first.Event)
 
-	// Re-POST same agent → idempotent.
+	// Re-POST same agent â†’ idempotent.
 	second, apiErr := svc.AssignTaskToAgent(ctx, taskID, agentID, "", nil, nil, projectID)
 	require.Nil(t, apiErr)
 	require.NotNil(t, second)
@@ -349,7 +349,7 @@ func TestAssignTaskToAgent_EmptyNotesPersisted(t *testing.T) {
 	events, err := s.AssignmentEvents().ListByTask(context.Background(), taskID)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
-	assert.Equal(t, "", events[0].Notes, "no notes on input → empty string in row, not omitted")
+	assert.Equal(t, "", events[0].Notes, "no notes on input â†’ empty string in row, not omitted")
 }
 
 // ---- ListAssignmentHistory tests -------------------------------------
@@ -423,6 +423,7 @@ func TestListAssignmentHistory_EmptyForNewTask(t *testing.T) {
 
 func TestListAssignmentHistory_TaskNotFound(t *testing.T) {
 	svc, _ := newAssignmentTestService(t)
+	projectID := uuid.New()
 
 	events, svcErr := svc.ListAssignmentHistory(context.Background(), uuid.New(), projectID)
 	require.NotNil(t, svcErr)
@@ -539,7 +540,7 @@ func TestAssignTaskToAgent_ReassignLeavesNoOrphanActive(t *testing.T) {
 
 func TestAssignTaskToAgent_TransactionRollsBackOnEventInsertFailure(t *testing.T) {
 	// If the assignment_event Append fails, the whole transaction
-	// must roll back — no active row left over, no half-state.
+	// must roll back â€” no active row left over, no half-state.
 	// We can't easily inject a failure into the real store, so
 	// this test exercises the path indirectly: after a successful
 	// assign followed by a second assign on a different agent,

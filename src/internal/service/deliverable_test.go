@@ -38,6 +38,8 @@ func newDeliverableTestService(t *testing.T) (*DeliverableService, store.Store) 
 // This signature mirrors the seedTaskAndAgent pattern from
 // assignment_test.go (TASK-420): the projectID flows through so
 // every service call has a `callerProjectID` to compare against.
+func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }
+
 func seedDeliverableTaskAndAgent(t *testing.T, s store.Store, projectID uuid.UUID) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -183,7 +185,7 @@ func TestDeliverableService_Update_OversizedContent_413(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, svcErr.Status)
 	assert.Equal(t, "PAYLOAD_TOO_LARGE", svcErr.Code)
 
-	// v1 must be unchanged — the update was rejected before
+	// v1 must be unchanged â€” the update was rejected before
 	// any state change.
 	current, svcErr := svc.GetDeliverable(context.Background(), created.ID, callerProjectID)
 	expectNoError(t, svcErr)
@@ -373,7 +375,7 @@ func TestDeliverableService_ListVersions_DESCOrdering(t *testing.T) {
 	}, callerProjectID)
 	expectNoError(t, svcErr)
 
-	// PUT twice → v1, v2, v3.
+	// PUT twice â†’ v1, v2, v3.
 	for i := 2; i <= 3; i++ {
 		_, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 			Title:   "v" + string(rune('0'+i)),
@@ -496,7 +498,7 @@ func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 	}
 	// Exactly one of the N PUTs should win; the rest should
 	// hit the (deliverable_id, version) UNIQUE constraint
-	// and return 409 CONFLICT. We accept "ok=1 OR ok=0" — the
+	// and return 409 CONFLICT. We accept "ok=1 OR ok=0" â€” the
 	// in-memory store doesn't serialise reads inside WithTx,
 	// so all N might race on the read of current.Version and
 	// all try to write version=2; the first to insert wins
@@ -533,16 +535,15 @@ func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 // =============================================================================
 //
 // Every method must reject:
-//   - callerProjectID == uuid.Nil               → 400 MISSING_PROJECT_HEADER
-//   - callerProjectID != resource.ProjectID    → 404 CROSS_TENANT_BLOCKED
+//   - callerProjectID == uuid.Nil               â†’ 400 MISSING_PROJECT_HEADER
+//   - callerProjectID != resource.ProjectID    â†’ 404 CROSS_TENANT_BLOCKED
 //
 // The defensive triple-check in CreateDeliverable also rejects
-// (task.ProjectID != agent.ProjectID) — separate from cross-tenant
+// (task.ProjectID != agent.ProjectID) â€” separate from cross-tenant
 // but worth covering.
 
 func TestDeliverableService_Create_CrossTenant_TaskInOtherProject(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	otherProjectID := uuid.New()
 	taskID, agentID, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
@@ -560,8 +561,7 @@ func TestDeliverableService_Create_CrossTenant_TaskInOtherProject(t *testing.T) 
 }
 
 func TestDeliverableService_Create_MissingProjectHeader(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	taskID, agentID, _ := seedDeliverableTaskAndAgent(t, store, uuid.New())
 
@@ -577,8 +577,7 @@ func TestDeliverableService_Create_MissingProjectHeader(t *testing.T) {
 }
 
 func TestDeliverableService_Get_CrossTenant(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
@@ -596,8 +595,7 @@ func TestDeliverableService_Get_CrossTenant(t *testing.T) {
 }
 
 func TestDeliverableService_Get_MissingProjectHeader(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
@@ -614,8 +612,7 @@ func TestDeliverableService_Get_MissingProjectHeader(t *testing.T) {
 }
 
 func TestDeliverableService_List_CrossTenant_TaskFilterInOtherProject(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	otherProjectID := uuid.New()
 	taskID, _, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
@@ -629,8 +626,7 @@ func TestDeliverableService_List_CrossTenant_TaskFilterInOtherProject(t *testing
 }
 
 func TestDeliverableService_List_CrossTenant_AgentFilterInOtherProject(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	otherProjectID := uuid.New()
 	_, agentID, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
@@ -651,8 +647,7 @@ func TestDeliverableService_List_MissingProjectHeader(t *testing.T) {
 }
 
 func TestDeliverableService_Update_CrossTenant(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
@@ -667,15 +662,14 @@ func TestDeliverableService_Update_CrossTenant(t *testing.T) {
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title:     "should-not-stick",
 		Content:   "should-not-stick",
-		UpdatedBy: uuid.New(),
+		UpdatedBy:\ ptrUUID\(uuid\.New\(\)\),
 	}, otherProjectID)
 	assertCrossTenantBlocked(t, svcErr)
 	assert.Nil(t, updated)
 }
 
 func TestDeliverableService_Update_MissingProjectHeader(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
@@ -688,15 +682,14 @@ func TestDeliverableService_Update_MissingProjectHeader(t *testing.T) {
 
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title:     "should-not-stick",
-		UpdatedBy: uuid.New(),
+		UpdatedBy:\ ptrUUID\(uuid\.New\(\)\),
 	}, uuid.Nil)
 	assertMissingProjectHeader(t, svcErr)
 	assert.Nil(t, updated)
 }
 
 func TestDeliverableService_ListVersions_CrossTenant(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
@@ -714,8 +707,7 @@ func TestDeliverableService_ListVersions_CrossTenant(t *testing.T) {
 }
 
 func TestDeliverableService_ListVersions_MissingProjectHeader(t *testing.T) {
-	store, _ := newDeliverableTestStore(t)
-	svc, _ := newDeliverableTestService(t)
+\tsvc,\ store\ :=\ newDeliverableTestService\(t\)
 
 	projectID := uuid.New()
 	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
