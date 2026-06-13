@@ -17,6 +17,7 @@ import (
 	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/logger"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/router"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
@@ -68,7 +69,18 @@ func main() {
 	}
 
 	svc := service.New(st, buildAPIKeyStore(), logger, cfg)
-	r := router.New(svc, cfg.CORS, cfg.RateLimit)
+	corsMW := middleware.CORSConfig{
+		AllowedOrigins:   cfg.CORS.AllowedOrigins,
+		AllowedMethods:   cfg.CORS.AllowedMethods,
+		AllowedHeaders:   cfg.CORS.AllowedHeaders,
+		AllowCredentials: cfg.CORS.AllowCredentials,
+		MaxAge:           cfg.CORS.MaxAge,
+	}
+	rateMW := middleware.RateLimitConfig{
+		RequestsPerMinute: cfg.RateLimit.RequestsPerMinute,
+		Burst:             cfg.RateLimit.Burst,
+	}
+	r := router.New(svc, corsMW, rateMW)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

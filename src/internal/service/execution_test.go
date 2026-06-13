@@ -56,7 +56,7 @@ func seedExecutionTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUI
 		ProjectID: uuid.New(),
 		Title:     "exec-test-" + uuid.NewString()[:8],
 		Status:    model.TaskOpen,
-		Priority:  model.TaskPriorityNormal,
+		Priority:  model.PriorityNormal,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -370,7 +370,7 @@ func TestCreateExecution_MockGoroutine_RespectsShutdown(t *testing.T) {
 	// Seed task + agent
 	task := &model.Task{
 		ID: uuid.New(), ProjectID: uuid.New(), Title: "cancel-test",
-		Status: model.TaskOpen, Priority: model.TaskPriorityNormal,
+		Status: model.TaskOpen, Priority: model.PriorityNormal,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	require.NoError(t, s.Tasks().Create(task))

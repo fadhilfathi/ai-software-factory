@@ -40,7 +40,7 @@ func seedDeliverableTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.U
 		ProjectID: uuid.New(),
 		Title:     "deliv-test-" + uuid.NewString()[:8],
 		Status:    model.TaskOpen,
-		Priority:  model.TaskPriorityNormal,
+		Priority:  model.PriorityNormal,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}

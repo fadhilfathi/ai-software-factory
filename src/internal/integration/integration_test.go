@@ -280,7 +280,7 @@ func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
 		"first assignment should not be idempotent")
 	assert.Equal(t, agentID, assignResp.Assignment.AgentID.String(),
 		"assignment should target the smoke test agent")
-	assert.Equal(t, "coding", assignResp.Assignment.RequiredCapability,
+	assert.Equal(t, "coding", assignResp.Assignment.RequiredCapabilities,
 		"assignment should record the required capability")
 
 	// Step 4: POST /v1/deliverables — create a deliverable tied to
