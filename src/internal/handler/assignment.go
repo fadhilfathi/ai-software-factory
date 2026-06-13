@@ -26,11 +26,13 @@ type AssignmentService interface {
 		notes string,
 		assignedBy *uuid.UUID,
 		capabilitiesRequired []string,
+		callerProjectID uuid.UUID,
 	) (*service.AssignmentResult, *service.Error)
 
 	ListAssignmentHistory(
 		ctx context.Context,
 		taskID uuid.UUID,
+		callerProjectID uuid.UUID,
 	) ([]*model.AssignmentEvent, *service.Error)
 }
 
@@ -117,7 +119,7 @@ func (h *AssignmentHandler) AssignTask(c *gin.Context) {
 
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 	result, svcErr := h.svc.AssignTaskToAgent(
@@ -162,7 +164,7 @@ func (h *AssignmentHandler) ListHistory(c *gin.Context) {
 
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 	events, svcErr := h.svc.ListAssignmentHistory(c.Request.Context(), id, callerProjectID)
@@ -178,24 +180,4 @@ func (h *AssignmentHandler) ListHistory(c *gin.Context) {
 			"server_time": time.Now().UTC().Format(time.RFC3339),
 		},
 	})
-}
-// projectIDFromContext reads the X-Project-ID header and parses it as a UUID.
-// Returns uuid.Nil and false if the header is missing or malformed.
-//
-// This is the path-implied project for cross-tenant checks (F-014).
-// The service layer trusts this signal and does not double-check it against
-// the caller's project membership (a Sprint 5+ MembershipService follow-up).
-func projectIDFromContext(c *gin.Context) (uuid.UUID, bool) {
-	header := c.GetHeader("X-Project-ID")
-	if header == "" {
-		return uuid.Nil, false
-	}
-	projectID, err := uuid.Parse(header)
-	if err != nil {
-		return uuid.Nil, false
-	}
-	if projectID == uuid.Nil {
-		return uuid.Nil, false
-	}
-	return projectID, true
 }

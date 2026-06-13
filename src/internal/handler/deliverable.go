@@ -26,27 +26,32 @@ type DeliverableService interface {
 	CreateDeliverable(
 		ctx context.Context,
 		req service.CreateDeliverableRequest,
+		callerProjectID uuid.UUID,
 	) (*model.Deliverable, *service.Error)
 
 	GetDeliverable(
 		ctx context.Context,
 		id uuid.UUID,
+		callerProjectID uuid.UUID,
 	) (*model.Deliverable, *service.Error)
 
 	ListDeliverables(
 		ctx context.Context,
 		filter model.DeliverableFilter,
+		callerProjectID uuid.UUID,
 	) (*model.DeliverableListResult, *service.Error)
 
 	UpdateDeliverable(
 		ctx context.Context,
 		id uuid.UUID,
 		req service.UpdateDeliverableRequest,
+		callerProjectID uuid.UUID,
 	) (*model.Deliverable, *service.Error)
 
 	ListDeliverableVersions(
 		ctx context.Context,
 		deliverableID uuid.UUID,
+		callerProjectID uuid.UUID,
 	) ([]*model.DeliverableVersion, *service.Error)
 }
 
@@ -144,7 +149,7 @@ func (h *DeliverableHandler) Create(c *gin.Context) {
 	}
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 	taskID, err := uuid.Parse(req.TaskID)
@@ -213,7 +218,7 @@ func (h *DeliverableHandler) List(c *gin.Context) {
 	}
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 
@@ -237,7 +242,7 @@ func (h *DeliverableHandler) Get(c *gin.Context) {
 	}
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 	d, svcErr := h.svc.GetDeliverable(c.Request.Context(), id, callerProjectID)
@@ -273,7 +278,7 @@ func (h *DeliverableHandler) Update(c *gin.Context) {
 	}
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 
@@ -306,7 +311,7 @@ func (h *DeliverableHandler) ListVersions(c *gin.Context) {
 	}
 	callerProjectID, ok := projectIDFromContext(c)
 	if !ok {
-		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
 		return
 	}
 	versions, svcErr := h.svc.ListDeliverableVersions(c.Request.Context(), id, callerProjectID)
@@ -376,19 +381,3 @@ func toDeliverableVersionResponse(v *model.DeliverableVersion) deliverableVersio
 }
 
 
-// projectIDFromContext parses the X-Project-ID header into a uuid.UUID.
-// Returns uuid.Nil + false if the header is missing, empty, or not
-// a valid UUID. Handlers should map the false result to a 400 response
-// with code MISSING_PROJECT_HEADER. Mirrors the local helper added in
-// assignment.go (TASK-420).
-func projectIDFromContext(c *gin.Context) (uuid.UUID, bool) {
-	header := c.GetHeader("X-Project-ID")
-	if header == "" {
-		return uuid.Nil, false
-	}
-	parsed, err := uuid.Parse(header)
-	if err != nil {
-		return uuid.Nil, false
-	}
-	return parsed, true
-}
