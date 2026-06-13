@@ -73,7 +73,7 @@ func newDeliverableTestRouter(t *testing.T, withUserID string) (*gin.Engine, *se
 // the helper used in service tests, but lives in the handler
 // package because the handler doesn't import the service test
 // internals.
-func seedDelivTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID) {
+func seedDelivTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	task := &model.Task{
@@ -94,10 +94,13 @@ func seedDelivTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID) {
 		Capabilities: []string{"coding"},
 	})
 	require.Nil(t, apiErr)
-	return task.ID, created.ID
+	return task.ID, created.ID, task.ProjectID
 }
 
-func doDelivRequest(r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+// doDelivRequestAs sets the X-Project-ID header to the supplied projectID.
+// Pass uuid.Nil to skip the header (used by tests that exercise a different
+// failure mode, e.g. MissingAuth_401 or the new MissingProjectHeader tests).
+func doDelivRequestAs(r *gin.Engine, method, path string, body any, projectID uuid.UUID) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
 		_ = json.NewEncoder(&buf).Encode(body)
@@ -106,9 +109,18 @@ func doDelivRequest(r *gin.Engine, method, path string, body any) *httptest.Resp
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if projectID != uuid.Nil {
+		req.Header.Set("X-Project-ID", projectID.String())
+	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
+}
+
+// doDelivRequest is the no-header variant. Kept for the MissingAuth_401 test,
+// which short-circuits before the deliverable handler reads the header.
+func doDelivRequest(r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+	return doDelivRequestAs(r, method, path, body, uuid.Nil)
 }
 
 // ----------------------------------------------------------------------------
@@ -117,13 +129,13 @@ func doDelivRequest(r *gin.Engine, method, path string, body any) *httptest.Resp
 
 func TestDeliverableHandler_Create_201(t *testing.T) {
 	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
 
 	body := map[string]any{
 		"task_id": taskID.String(), "agent_id": agentID.String(),
 		"title": "First deliverable", "content": "# Hello",
 	}
-	w := doDelivRequest(r, http.MethodPost, "/v1/deliverables", body)
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	var resp struct {
@@ -144,27 +156,29 @@ func TestDeliverableHandler_Create_400_BadUUID(t *testing.T) {
 		"task_id": "not-a-uuid", "agent_id": uuid.NewString(),
 		"title": "x", "content": "y",
 	}
-	w := doDelivRequest(r, http.MethodPost, "/v1/deliverables", body)
+	// BadUUID happens before the X-Project-ID check, so we still need a valid project header.
+	projectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	body = map[string]any{
 		"task_id": uuid.NewString(), "agent_id": "still-not-a-uuid",
 		"title": "x", "content": "y",
 	}
-	w = doDelivRequest(r, http.MethodPost, "/v1/deliverables", body)
+	w = doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestDeliverableHandler_Create_404(t *testing.T) {
 	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
-	_, agentID := seedDelivTaskAndAgent(t, s)
+	_, agentID, projectID := seedDelivTaskAndAgent(t, s)
 
 	// Task does not exist.
 	body := map[string]any{
 		"task_id": uuid.NewString(), "agent_id": agentID.String(),
 		"title": "x", "content": "y",
 	}
-	w := doDelivRequest(r, http.MethodPost, "/v1/deliverables", body)
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -174,15 +188,15 @@ func TestDeliverableHandler_Create_404(t *testing.T) {
 
 func TestDeliverableHandler_Get_200_And_404(t *testing.T) {
 	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "x", Content: "y",
-	})
+	}, projectID)
 	require.Nil(t, svcErr)
 
 	// 200
-	w := doDelivRequest(r, http.MethodGet, "/v1/deliverables/"+d.ID.String(), nil)
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String(), nil, projectID)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp struct {
 		Data deliverableResponse `json:"data"`
@@ -191,7 +205,7 @@ func TestDeliverableHandler_Get_200_And_404(t *testing.T) {
 	assert.Equal(t, d.ID.String(), resp.Data.ID)
 
 	// 404
-	w = doDelivRequest(r, http.MethodGet, "/v1/deliverables/"+uuid.NewString(), nil)
+	w = doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+uuid.NewString(), nil, projectID)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -201,22 +215,22 @@ func TestDeliverableHandler_Get_200_And_404(t *testing.T) {
 
 func TestDeliverableHandler_List_WithFilters(t *testing.T) {
 	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskA, agentA := seedDelivTaskAndAgent(t, s)
-	taskB, _ := seedDelivTaskAndAgent(t, s)
+	taskA, agentA, projectID := seedDelivTaskAndAgent(t, s)
+	taskB, _, _ := seedDelivTaskAndAgent(t, s)
 
 	for i := 0; i < 3; i++ {
 		_, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 			TaskID: taskA, AgentID: agentA, Title: "a-" + uuid.NewString()[:6], Content: "x",
-		})
+		}, projectID)
 		require.Nil(t, svcErr)
 	}
 	_, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 		TaskID: taskB, AgentID: agentA, Title: "b", Content: "x",
-	})
+	}, projectID)
 	require.Nil(t, svcErr)
 
 	// task_id filter → 3
-	w := doDelivRequest(r, http.MethodGet, "/v1/deliverables?task_id="+taskA.String(), nil)
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?task_id="+taskA.String(), nil, projectID)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp struct {
 		Data model.DeliverableListResult `json:"data"`
@@ -225,14 +239,14 @@ func TestDeliverableHandler_List_WithFilters(t *testing.T) {
 	assert.Len(t, resp.Data.Items, 3)
 
 	// agent_id filter → 4
-	w = doDelivRequest(r, http.MethodGet, "/v1/deliverables?agent_id="+agentA.String(), nil)
+	w = doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?agent_id="+agentA.String(), nil, projectID)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Data.Items, 4)
 
 	// No filter → 400 (service requires at least one of
 	// task_id/agent_id).
-	w = doDelivRequest(r, http.MethodGet, "/v1/deliverables", nil)
+	w = doDelivRequestAs(r, http.MethodGet, "/v1/deliverables", nil, projectID)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -242,14 +256,14 @@ func TestDeliverableHandler_List_WithFilters(t *testing.T) {
 
 func TestDeliverableHandler_PUT_200_v1ToV2(t *testing.T) {
 	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
 	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1", Content: "v1 body",
-	})
+	}, projectID)
 	require.Nil(t, svcErr)
 
 	body := map[string]any{"title": "v2", "content": "v2 body"}
-	w := doDelivRequest(r, http.MethodPut, "/v1/deliverables/"+d.ID.String(), body)
+	w := doDelivRequestAs(r, http.MethodPut, "/v1/deliverables/"+d.ID.String(), body, projectID)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	var resp struct {
@@ -264,7 +278,8 @@ func TestDeliverableHandler_PUT_200_v1ToV2(t *testing.T) {
 func TestDeliverableHandler_PUT_404(t *testing.T) {
 	r, _, _ := newDeliverableTestRouter(t, uuid.NewString())
 	body := map[string]any{"title": "x", "content": "y"}
-	w := doDelivRequest(r, http.MethodPut, "/v1/deliverables/"+uuid.NewString(), body)
+	projectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodPut, "/v1/deliverables/"+uuid.NewString(), body, projectID)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -274,17 +289,17 @@ func TestDeliverableHandler_PUT_404(t *testing.T) {
 
 func TestDeliverableHandler_ListVersions_200(t *testing.T) {
 	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
 	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1", Content: "v1",
-	})
+	}, projectID)
 	require.Nil(t, svcErr)
 	_, svcErr = svc.UpdateDeliverable(context.Background(), d.ID, service.UpdateDeliverableRequest{
 		Title: "v2", Content: "v2",
-	})
+	}, projectID)
 	require.Nil(t, svcErr)
 
-	w := doDelivRequest(r, http.MethodGet, "/v1/deliverables/"+d.ID.String()+"/versions", nil)
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String()+"/versions", nil, projectID)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	var versions []deliverableVersionResponse
@@ -295,7 +310,7 @@ func TestDeliverableHandler_ListVersions_200(t *testing.T) {
 	assert.Equal(t, 1, versions[1].Version)
 
 	// 404 when the deliverable itself doesn't exist.
-	w = doDelivRequest(r, http.MethodGet, "/v1/deliverables/"+uuid.NewString()+"/versions", nil)
+	w = doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+uuid.NewString()+"/versions", nil, projectID)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -318,11 +333,16 @@ func TestDeliverableHandler_MissingAuth_401(t *testing.T) {
 // MiB map[string]any first is wasteful. This helper writes the
 // raw bytes directly to the request, sets Content-Length
 // explicitly, and skips JSON encoding.
-func doDelivRequestRaw(r *gin.Engine, method, path string, contentType string, body []byte) *httptest.ResponseRecorder {
+// doDelivRequestRaw sets the X-Project-ID header to the supplied projectID.
+// Pass uuid.Nil to skip the header.
+func doDelivRequestRaw(r *gin.Engine, method, path string, contentType string, body []byte, projectID uuid.UUID) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	req.Header.Set("Content-Type", contentType)
 	req.ContentLength = int64(len(body))
+	if projectID != uuid.Nil {
+		req.Header.Set("X-Project-ID", projectID.String())
+	}
 	r.ServeHTTP(w, req)
 	return w
 }
@@ -343,12 +363,13 @@ func TestDeliverableHandler_Create_OversizedRequest_413(t *testing.T) {
 	// that needs to be huge; the rest of the envelope is
 	// small.
 	oversize := bytes.Repeat([]byte("A"), 10*1024*1024)
+	projectID := uuid.New()
 	payload := []byte(`{"task_id":"` + uuid.NewString() + `","agent_id":"` + uuid.NewString() + `","title":"oversize","content":"`)
 	payload = append(payload, oversize...)
 	payload = append(payload, []byte(`"}`)...)
 
 	w := doDelivRequestRaw(r, http.MethodPost, "/v1/deliverables",
-		"application/json", payload)
+		"application/json", payload, projectID)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code,
 		"oversize body must return 413, got %d (body=%s)", w.Code, truncate(w.Body.Bytes(), 256))
 
@@ -365,13 +386,14 @@ func TestDeliverableHandler_Create_OversizedRequest_413(t *testing.T) {
 func TestDeliverableHandler_Update_OversizedRequest_413(t *testing.T) {
 	r, _, _ := newDeliverableTestRouter(t, uuid.NewString())
 	id := uuid.New()
+	projectID := uuid.New()
 	oversize := bytes.Repeat([]byte("A"), 10*1024*1024)
 	payload := []byte(`{"title":"v2-oversize","content":"`)
 	payload = append(payload, oversize...)
 	payload = append(payload, []byte(`"}`)...)
 
 	w := doDelivRequestRaw(r, http.MethodPut, "/v1/deliverables/"+id.String(),
-		"application/json", payload)
+		"application/json", payload, projectID)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code,
 		"oversize PUT body must return 413, got %d (body=%s)", w.Code, truncate(w.Body.Bytes(), 256))
 
@@ -388,7 +410,7 @@ func TestDeliverableHandler_Update_OversizedRequest_413(t *testing.T) {
 // headroom is enough for the JSON shape used here.
 func TestDeliverableHandler_Create_AtTheCapBody_Succeeds(t *testing.T) {
 	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
-	taskID, agentID := seedDelivTaskAndAgent(t, s)
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
 
 	// Build a JSON body whose `content` is exactly 1 MiB.
 	content := strings.Repeat("B", int(model.MaxDeliverableContentBytes))
@@ -398,7 +420,7 @@ func TestDeliverableHandler_Create_AtTheCapBody_Succeeds(t *testing.T) {
 		"title":    "at-cap",
 		"content":  content,
 	}
-	w := doDelivRequest(r, http.MethodPost, "/v1/deliverables", body)
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
 	assert.Equal(t, http.StatusCreated, w.Code,
 		"at-cap body must succeed, got %d (body=%s)", w.Code, truncate(w.Body.Bytes(), 256))
 }
@@ -410,4 +432,201 @@ func truncate(b []byte, n int) string {
 		return string(b)
 	}
 	return string(b[:n]) + "...(truncated)"
+}
+
+
+// =============================================================================
+// TASK-421 (F-015) cross-tenant + missing-header handler tests
+// =============================================================================
+//
+// Each test exercises one of the 5 deliverable routes under
+// (a) cross-tenant access (different X-Project-ID) and
+// (b) missing X-Project-ID header.
+//
+// Expected responses (per docs/sprint4/security-review.md §5.1.1):
+//   - cross-tenant       → 404 + code CROSS_TENANT_BLOCKED
+//   - missing header     → 400 + code MISSING_PROJECT_HEADER
+
+// Cross-tenant: CreateDeliverable, GetDeliverable, UpdateDeliverable,
+// ListDeliverableVersions (all return 404).
+// ListDeliverables is in the same-project control test (returns 200)
+// plus a cross-tenant test (returns 404).
+
+func TestDeliverableHandler_Create_CrossTenant_Returns404(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	// Caller in a different project asks to create against a task they don't own.
+	otherProjectID := uuid.New()
+	body := map[string]any{
+		"task_id":  taskID.String(),
+		"agent_id": agentID.String(),
+		"title":    "cross-tenant",
+		"content":  "should not stick",
+	}
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_Create_MissingProjectHeader_Returns400(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, _ := seedDelivTaskAndAgent(t, s)
+
+	body := map[string]any{
+		"task_id":  taskID.String(),
+		"agent_id": agentID.String(),
+		"title":    "missing-header",
+		"content":  "x",
+	}
+	// uuid.Nil → no X-Project-ID header.
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, uuid.Nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertCode(t, w.Body.Bytes(), "MISSING_PROJECT_HEADER")
+}
+
+func TestDeliverableHandler_Get_CrossTenant_Returns404(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "get-cross-tenant",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	otherProjectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String(), nil, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_Get_MissingProjectHeader_Returns400(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "get-missing-header",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String(), nil, uuid.Nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertCode(t, w.Body.Bytes(), "MISSING_PROJECT_HEADER")
+}
+
+func TestDeliverableHandler_List_CrossTenant_TaskFilter_Returns404(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, _, _ := seedDelivTaskAndAgent(t, s)
+
+	otherProjectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?task_id="+taskID.String(), nil, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_List_CrossTenant_AgentFilter_Returns404(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	_, agentID, _ := seedDelivTaskAndAgent(t, s)
+
+	otherProjectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?agent_id="+agentID.String(), nil, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_List_MissingProjectHeader_Returns400(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, _, _ := seedDelivTaskAndAgent(t, s)
+
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?task_id="+taskID.String(), nil, uuid.Nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertCode(t, w.Body.Bytes(), "MISSING_PROJECT_HEADER")
+}
+
+func TestDeliverableHandler_Update_CrossTenant_Returns404(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "update-cross-tenant",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	otherProjectID := uuid.New()
+	body := map[string]any{"title": "should-not-stick", "content": "z"}
+	w := doDelivRequestAs(r, http.MethodPut, "/v1/deliverables/"+d.ID.String(), body, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_Update_MissingProjectHeader_Returns400(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "update-missing-header",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	body := map[string]any{"title": "v2", "content": "z"}
+	w := doDelivRequestAs(r, http.MethodPut, "/v1/deliverables/"+d.ID.String(), body, uuid.Nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertCode(t, w.Body.Bytes(), "MISSING_PROJECT_HEADER")
+}
+
+func TestDeliverableHandler_ListVersions_CrossTenant_Returns404(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "listversions-cross-tenant",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	otherProjectID := uuid.New()
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String()+"/versions", nil, otherProjectID)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertCode(t, w.Body.Bytes(), "CROSS_TENANT_BLOCKED")
+}
+
+func TestDeliverableHandler_ListVersions_MissingProjectHeader_Returns400(t *testing.T) {
+	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "listversions-missing-header",
+		Content: "y",
+	}, projectID)
+	require.Nil(t, svcErr)
+
+	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables/"+d.ID.String()+"/versions", nil, uuid.Nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assertCode(t, w.Body.Bytes(), "MISSING_PROJECT_HEADER")
+}
+
+// assertCode parses an error envelope and asserts the code field.
+func assertCode(t *testing.T, body []byte, want string) {
+	t.Helper()
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(body, &resp))
+	errObj, ok := resp["error"].(map[string]any)
+	require.True(t, ok, "expected error object in body, got: %s", string(body))
+	assert.Equal(t, want, errObj["code"])
 }

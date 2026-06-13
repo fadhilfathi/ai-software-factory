@@ -142,6 +142,11 @@ func (h *DeliverableHandler) Create(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		return
+	}
 	taskID, err := uuid.Parse(req.TaskID)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid task_id")
@@ -159,7 +164,7 @@ func (h *DeliverableHandler) Create(c *gin.Context) {
 		Title:     req.Title,
 		Content:   req.Content,
 		CreatedBy: userIDFromContext(c),
-	})
+	}, callerProjectID)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
@@ -206,8 +211,13 @@ func (h *DeliverableHandler) List(c *gin.Context) {
 		}
 		filter.Cursor = id
 	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		return
+	}
 
-	result, svcErr := h.svc.ListDeliverables(c.Request.Context(), filter)
+	result, svcErr := h.svc.ListDeliverables(c.Request.Context(), filter, callerProjectID)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
@@ -225,7 +235,12 @@ func (h *DeliverableHandler) Get(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Deliverable ID")
 		return
 	}
-	d, svcErr := h.svc.GetDeliverable(c.Request.Context(), id)
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		return
+	}
+	d, svcErr := h.svc.GetDeliverable(c.Request.Context(), id, callerProjectID)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
@@ -256,12 +271,17 @@ func (h *DeliverableHandler) Update(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
 		return
 	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		return
+	}
 
 	d, svcErr := h.svc.UpdateDeliverable(c.Request.Context(), id, service.UpdateDeliverableRequest{
 		Title:     req.Title,
 		Content:   req.Content,
 		UpdatedBy: userIDFromContext(c),
-	})
+	}, callerProjectID)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
@@ -284,7 +304,12 @@ func (h *DeliverableHandler) ListVersions(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Deliverable ID")
 		return
 	}
-	versions, svcErr := h.svc.ListDeliverableVersions(c.Request.Context(), id)
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request", nil)
+		return
+	}
+	versions, svcErr := h.svc.ListDeliverableVersions(c.Request.Context(), id, callerProjectID)
 	if svcErr != nil {
 		writeServiceError(c, svcErr)
 		return
@@ -348,4 +373,22 @@ func toDeliverableVersionResponse(v *model.DeliverableVersion) deliverableVersio
 		r.CreatedBy = &s
 	}
 	return r
+}
+
+
+// projectIDFromContext parses the X-Project-ID header into a uuid.UUID.
+// Returns uuid.Nil + false if the header is missing, empty, or not
+// a valid UUID. Handlers should map the false result to a 400 response
+// with code MISSING_PROJECT_HEADER. Mirrors the local helper added in
+// assignment.go (TASK-420).
+func projectIDFromContext(c *gin.Context) (uuid.UUID, bool) {
+	header := c.GetHeader("X-Project-ID")
+	if header == "" {
+		return uuid.Nil, false
+	}
+	parsed, err := uuid.Parse(header)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return parsed, true
 }

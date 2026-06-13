@@ -27,17 +27,24 @@ func newDeliverableTestService(t *testing.T) (*DeliverableService, store.Store) 
 	return svc, s
 }
 
-// seedDeliverableTaskAndAgent is shared with the execution
-// test helper (same shape — create a task and an agent in
-// the in-memory store). We don't share an import because
-// the helper would also be available to other test files.
-func seedDeliverableTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID) {
+// seedDeliverableTaskAndAgent creates a task and an agent in the
+// store. projectID is the project the deliverable will live in; the
+// task inherits it and the agent is created with the same projectID
+// (so cross-tenant checks in the service treat them as same-project).
+// Returns (taskID, agentID, projectID). Tests pass projectID through
+// to the service as `callerProjectID` for the happy path; cross-tenant
+// tests use a different projectID at the call site.
+//
+// This signature mirrors the seedTaskAndAgent pattern from
+// assignment_test.go (TASK-420): the projectID flows through so
+// every service call has a `callerProjectID` to compare against.
+func seedDeliverableTaskAndAgent(t *testing.T, s store.Store, projectID uuid.UUID) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 
 	task := &model.Task{
 		ID:        uuid.New(),
-		ProjectID: uuid.New(),
+		ProjectID: projectID,
 		Title:     "deliv-test-" + uuid.NewString()[:8],
 		Status:    model.TaskOpen,
 		Priority:  model.PriorityNormal,
@@ -54,7 +61,7 @@ func seedDeliverableTaskAndAgent(t *testing.T, s store.Store) (uuid.UUID, uuid.U
 		Capabilities: []string{"coding"},
 	})
 	require.Nil(t, apiErr)
-	return task.ID, created.ID
+	return task.ID, created.ID, projectID
 }
 
 // expectNoError fails the test if err is non-nil. We use this
@@ -73,7 +80,7 @@ func expectNoError(t *testing.T, err *Error) {
 
 func TestDeliverableService_Create_Success(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID:   taskID,
@@ -81,7 +88,7 @@ func TestDeliverableService_Create_Success(t *testing.T) {
 		Title:    "My first deliverable",
 		Content:  "# Hello\n\nThis is the first version.",
 		CreatedBy: nil,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	require.NotNil(t, d)
 	assert.NotEqual(t, uuid.Nil, d.ID)
@@ -95,7 +102,7 @@ func TestDeliverableService_Create_Success(t *testing.T) {
 	// Both rows must exist after Create: the main row + the
 	// v1 version row. This is the append-only invariant
 	// starting from v1.
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Len(t, versions, 1)
 	assert.Equal(t, 1, versions[0].Version)
@@ -108,7 +115,7 @@ func TestDeliverableService_Create_Success(t *testing.T) {
 // here is comfortably above the cap.
 func TestDeliverableService_Create_OversizedContent_413(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	oversize := strings.Repeat("A", int(model.MaxDeliverableContentBytes)+1)
 	require.Greater(t, len(oversize), int(model.MaxDeliverableContentBytes))
@@ -119,7 +126,7 @@ func TestDeliverableService_Create_OversizedContent_413(t *testing.T) {
 		Title:    "oversize-create",
 		Content:  oversize,
 		CreatedBy: nil,
-	})
+	}, callerProjectID)
 	require.NotNil(t, svcErr, "oversize content must be rejected")
 	assert.Nil(t, d)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, svcErr.Status)
@@ -132,7 +139,7 @@ func TestDeliverableService_Create_OversizedContent_413(t *testing.T) {
 // of the > comparison.
 func TestDeliverableService_Create_AtTheCap_Succeeds(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	atCap := strings.Repeat("B", int(model.MaxDeliverableContentBytes))
 	require.Equal(t, int(model.MaxDeliverableContentBytes), len(atCap))
@@ -143,7 +150,7 @@ func TestDeliverableService_Create_AtTheCap_Succeeds(t *testing.T) {
 		Title:    "at-the-cap",
 		Content:  atCap,
 		CreatedBy: nil,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	require.NotNil(t, d)
 	assert.Equal(t, 1, d.Version)
@@ -155,7 +162,7 @@ func TestDeliverableService_Create_AtTheCap_Succeeds(t *testing.T) {
 // giant content repeatedly.
 func TestDeliverableService_Update_OversizedContent_413(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	created, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID:   taskID,
@@ -163,14 +170,14 @@ func TestDeliverableService_Update_OversizedContent_413(t *testing.T) {
 		Title:    "v1",
 		Content:  "v1",
 		CreatedBy: nil,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	oversize := strings.Repeat("A", int(model.MaxDeliverableContentBytes)+1)
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), created.ID, UpdateDeliverableRequest{
 		Title:   "v2-oversize",
 		Content: oversize,
-	})
+	}, callerProjectID)
 	require.NotNil(t, svcErr, "oversize update must be rejected")
 	assert.Nil(t, updated)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, svcErr.Status)
@@ -178,7 +185,7 @@ func TestDeliverableService_Update_OversizedContent_413(t *testing.T) {
 
 	// v1 must be unchanged — the update was rejected before
 	// any state change.
-	current, svcErr := svc.GetDeliverable(context.Background(), created.ID)
+	current, svcErr := svc.GetDeliverable(context.Background(), created.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Equal(t, 1, current.Version, "v1 must remain after a rejected oversize update")
 	assert.Equal(t, "v1", current.Title)
@@ -186,14 +193,14 @@ func TestDeliverableService_Update_OversizedContent_413(t *testing.T) {
 
 func TestDeliverableService_Create_TaskNotFound_404(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	_, agentID := seedDeliverableTaskAndAgent(t, s)
+	_, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID:   uuid.New(), // does not exist
 		AgentID:  agentID,
 		Title:    "x",
 		Content:  "y",
-	})
+	}, callerProjectID)
 	assert.Nil(t, d)
 	require.NotNil(t, svcErr)
 	assert.Equal(t, 404, svcErr.Status)
@@ -202,14 +209,14 @@ func TestDeliverableService_Create_TaskNotFound_404(t *testing.T) {
 
 func TestDeliverableService_Create_AgentNotFound_404(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, _ := seedDeliverableTaskAndAgent(t, s)
+	taskID, _, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID:   taskID,
 		AgentID:  uuid.New(), // does not exist
 		Title:    "x",
 		Content:  "y",
-	})
+	}, callerProjectID)
 	assert.Nil(t, d)
 	require.NotNil(t, svcErr)
 	assert.Equal(t, 404, svcErr.Status)
@@ -221,8 +228,9 @@ func TestDeliverableService_Create_AgentNotFound_404(t *testing.T) {
 
 func TestDeliverableService_Get_404(t *testing.T) {
 	svc, _ := newDeliverableTestService(t)
+	callerProjectID := uuid.New()
 
-	d, svcErr := svc.GetDeliverable(context.Background(), uuid.New())
+	d, svcErr := svc.GetDeliverable(context.Background(), uuid.New(), callerProjectID)
 	assert.Nil(t, d)
 	require.NotNil(t, svcErr)
 	assert.Equal(t, 404, svcErr.Status)
@@ -234,7 +242,7 @@ func TestDeliverableService_Get_404(t *testing.T) {
 
 func TestDeliverableService_List_Pagination(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	// 7 deliverables, all on the same task (so the filter has
 	// a single TaskID and we know the expected count).
@@ -243,14 +251,14 @@ func TestDeliverableService_List_Pagination(t *testing.T) {
 			TaskID: taskID, AgentID: agentID,
 			Title:   "title-" + uuid.NewString()[:6],
 			Content: "body",
-		})
+		}, callerProjectID)
 		expectNoError(t, svcErr)
 	}
 
 	// First page: limit=3, no cursor.
 	page1, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{
 		TaskID: taskID, Limit: 3,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Len(t, page1.Items, 3)
 	assert.NotEqual(t, uuid.Nil, page1.NextCursor)
@@ -258,7 +266,7 @@ func TestDeliverableService_List_Pagination(t *testing.T) {
 	// Second page.
 	page2, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{
 		TaskID: taskID, Limit: 3, Cursor: page1.NextCursor,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Len(t, page2.Items, 3)
 	assert.NotEqual(t, uuid.Nil, page2.NextCursor)
@@ -266,7 +274,7 @@ func TestDeliverableService_List_Pagination(t *testing.T) {
 	// Third page (final): 1 item, no next cursor.
 	page3, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{
 		TaskID: taskID, Limit: 3, Cursor: page2.NextCursor,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Len(t, page3.Items, 1)
 	assert.Equal(t, uuid.Nil, page3.NextCursor)
@@ -286,17 +294,17 @@ func TestDeliverableService_List_Pagination(t *testing.T) {
 
 func TestDeliverableService_Update_CreatesV2(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1 title", Content: "v1 body",
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	// PUT to v2.
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title: "v2 title", Content: "v2 body", UpdatedBy: nil,
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 	require.NotNil(t, updated)
 	assert.Equal(t, 2, updated.Version)
@@ -304,12 +312,12 @@ func TestDeliverableService_Update_CreatesV2(t *testing.T) {
 	assert.Equal(t, "v2 body", updated.Content)
 
 	// Main row at v2.
-	raw, svcErr := svc.GetDeliverable(context.Background(), d.ID)
+	raw, svcErr := svc.GetDeliverable(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Equal(t, 2, raw.Version)
 
 	// Versions table has 2 rows: v1 (original) and v2 (new).
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Len(t, versions, 2)
 
@@ -332,10 +340,11 @@ func TestDeliverableService_Update_CreatesV2(t *testing.T) {
 
 func TestDeliverableService_Update_404(t *testing.T) {
 	svc, _ := newDeliverableTestService(t)
+	callerProjectID := uuid.New()
 
 	d, svcErr := svc.UpdateDeliverable(context.Background(), uuid.New(), UpdateDeliverableRequest{
 		Title: "x", Content: "y",
-	})
+	}, callerProjectID)
 	assert.Nil(t, d)
 	require.NotNil(t, svcErr)
 	assert.Equal(t, 404, svcErr.Status)
@@ -347,8 +356,9 @@ func TestDeliverableService_Update_404(t *testing.T) {
 
 func TestDeliverableService_ListVersions_404ForMissingDeliverable(t *testing.T) {
 	svc, _ := newDeliverableTestService(t)
+	callerProjectID := uuid.New()
 
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), uuid.New())
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), uuid.New(), callerProjectID)
 	assert.Nil(t, versions)
 	require.NotNil(t, svcErr)
 	assert.Equal(t, 404, svcErr.Status)
@@ -356,11 +366,11 @@ func TestDeliverableService_ListVersions_404ForMissingDeliverable(t *testing.T) 
 
 func TestDeliverableService_ListVersions_DESCOrdering(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1", Content: "v1",
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	// PUT twice → v1, v2, v3.
@@ -368,11 +378,11 @@ func TestDeliverableService_ListVersions_DESCOrdering(t *testing.T) {
 		_, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 			Title:   "v" + string(rune('0'+i)),
 			Content: "v" + string(rune('0'+i)),
-		})
+		}, callerProjectID)
 		expectNoError(t, svcErr)
 	}
 
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	require.Len(t, versions, 3)
 	// DESC: v3, v2, v1.
@@ -392,15 +402,15 @@ func TestDeliverableService_ListVersions_DESCOrdering(t *testing.T) {
 // same row.
 func TestDeliverableService_NoOverwriteOfV1AfterV2(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1 title", Content: "v1 body",
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	// Capture v1's created_at and id for later comparison.
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	require.Len(t, versions, 1)
 	v1ID := versions[0].ID
@@ -412,11 +422,11 @@ func TestDeliverableService_NoOverwriteOfV1AfterV2(t *testing.T) {
 	// Write v2.
 	_, svcErr = svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title: "v2 title", Content: "v2 body",
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	// v1 must be unchanged.
-	versions, svcErr = svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr = svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	require.Len(t, versions, 2)
 	var v1After *model.DeliverableVersion
@@ -449,11 +459,11 @@ func TestDeliverableService_NoOverwriteOfV1AfterV2(t *testing.T) {
 // (deliverable_id, version).
 func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 	svc, s := newDeliverableTestService(t)
-	taskID, agentID := seedDeliverableTaskAndAgent(t, s)
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, s, uuid.New())
 
 	d, svcErr := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
 		TaskID: taskID, AgentID: agentID, Title: "v1", Content: "v1",
-	})
+	}, callerProjectID)
 	expectNoError(t, svcErr)
 
 	const N = 20
@@ -466,7 +476,7 @@ func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 			_, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 				Title:   "concurrent",
 				Content: "concurrent",
-			})
+			}, callerProjectID)
 			results <- svcErr
 		}(i)
 	}
@@ -500,12 +510,12 @@ func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 	// Sanity: final state is at version=2 (or higher if the
 	// winner's write was actually applied, but with one
 	// winning insert we expect v2 in the main row).
-	final, svcErr := svc.GetDeliverable(context.Background(), d.ID)
+	final, svcErr := svc.GetDeliverable(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	assert.Equal(t, 2, final.Version, "main row should be at v2 after exactly one winning PUT")
 
 	// The v1 row is still there.
-	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID)
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, callerProjectID)
 	expectNoError(t, svcErr)
 	var v1 *model.DeliverableVersion
 	for _, v := range versions {
@@ -515,4 +525,222 @@ func TestDeliverableService_ConcurrentUpdatesDontRace(t *testing.T) {
 	}
 	require.NotNil(t, v1, "v1 must be preserved")
 	assert.Equal(t, "v1", v1.Title)
+}
+
+
+// =============================================================================
+// TASK-421 (F-015) cross-tenant deliverable tests
+// =============================================================================
+//
+// Every method must reject:
+//   - callerProjectID == uuid.Nil               → 400 MISSING_PROJECT_HEADER
+//   - callerProjectID != resource.ProjectID    → 404 CROSS_TENANT_BLOCKED
+//
+// The defensive triple-check in CreateDeliverable also rejects
+// (task.ProjectID != agent.ProjectID) — separate from cross-tenant
+// but worth covering.
+
+func TestDeliverableService_Create_CrossTenant_TaskInOtherProject(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	otherProjectID := uuid.New()
+	taskID, agentID, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
+
+	req := CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "cross-tenant-create",
+	}
+
+	callerProjectID := uuid.New() // different from the task/agent project
+	d, svcErr := svc.CreateDeliverable(context.Background(), req, callerProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, d)
+}
+
+func TestDeliverableService_Create_MissingProjectHeader(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	taskID, agentID, _ := seedDeliverableTaskAndAgent(t, store, uuid.New())
+
+	req := CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "missing-header-create",
+	}
+
+	d, svcErr := svc.CreateDeliverable(context.Background(), req, uuid.Nil)
+	assertMissingProjectHeader(t, svcErr)
+	assert.Nil(t, d)
+}
+
+func TestDeliverableService_Get_CrossTenant(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "get-cross-tenant",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	otherProjectID := uuid.New()
+	got, svcErr := svc.GetDeliverable(context.Background(), d.ID, otherProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, got)
+}
+
+func TestDeliverableService_Get_MissingProjectHeader(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "get-missing-header",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	got, svcErr := svc.GetDeliverable(context.Background(), d.ID, uuid.Nil)
+	assertMissingProjectHeader(t, svcErr)
+	assert.Nil(t, got)
+}
+
+func TestDeliverableService_List_CrossTenant_TaskFilterInOtherProject(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	otherProjectID := uuid.New()
+	taskID, _, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
+
+	callerProjectID := uuid.New() // does not match task's project
+	res, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{
+		TaskID: taskID,
+	}, callerProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, res)
+}
+
+func TestDeliverableService_List_CrossTenant_AgentFilterInOtherProject(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	otherProjectID := uuid.New()
+	_, agentID, _ := seedDeliverableTaskAndAgent(t, store, otherProjectID)
+
+	callerProjectID := uuid.New()
+	res, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{
+		AgentID: agentID,
+	}, callerProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, res)
+}
+
+func TestDeliverableService_List_MissingProjectHeader(t *testing.T) {
+	svc, _ := newDeliverableTestService(t)
+	res, svcErr := svc.ListDeliverables(context.Background(), model.DeliverableFilter{}, uuid.Nil)
+	assertMissingProjectHeader(t, svcErr)
+	assert.Nil(t, res)
+}
+
+func TestDeliverableService_Update_CrossTenant(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "update-cross-tenant",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	otherProjectID := uuid.New()
+	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
+		Title:     "should-not-stick",
+		Content:   "should-not-stick",
+		UpdatedBy: uuid.New(),
+	}, otherProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, updated)
+}
+
+func TestDeliverableService_Update_MissingProjectHeader(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "update-missing-header",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
+		Title:     "should-not-stick",
+		UpdatedBy: uuid.New(),
+	}, uuid.Nil)
+	assertMissingProjectHeader(t, svcErr)
+	assert.Nil(t, updated)
+}
+
+func TestDeliverableService_ListVersions_CrossTenant(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "listversions-cross-tenant",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	otherProjectID := uuid.New()
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, otherProjectID)
+	assertCrossTenantBlocked(t, svcErr)
+	assert.Nil(t, versions)
+}
+
+func TestDeliverableService_ListVersions_MissingProjectHeader(t *testing.T) {
+	store, _ := newDeliverableTestStore(t)
+	svc, _ := newDeliverableTestService(t)
+
+	projectID := uuid.New()
+	taskID, agentID, callerProjectID := seedDeliverableTaskAndAgent(t, store, projectID)
+	d, _ := svc.CreateDeliverable(context.Background(), CreateDeliverableRequest{
+		TaskID:  taskID,
+		AgentID: agentID,
+		Title:   "listversions-missing-header",
+	}, callerProjectID)
+	require.NotNil(t, d)
+
+	versions, svcErr := svc.ListDeliverableVersions(context.Background(), d.ID, uuid.Nil)
+	assertMissingProjectHeader(t, svcErr)
+	assert.Nil(t, versions)
+}
+
+func assertCrossTenantBlocked(t *testing.T, svcErr *Error) {
+	t.Helper()
+	require.NotNil(t, svcErr, "expected service.Error, got nil")
+	assert.Equal(t, "CROSS_TENANT_BLOCKED", svcErr.Code)
+	assert.Equal(t, http.StatusNotFound, svcErr.Status)
+}
+
+func assertMissingProjectHeader(t *testing.T, svcErr *Error) {
+	t.Helper()
+	require.NotNil(t, svcErr, "expected service.Error, got nil")
+	assert.Equal(t, "MISSING_PROJECT_HEADER", svcErr.Code)
+	assert.Equal(t, http.StatusBadRequest, svcErr.Status)
 }

@@ -68,11 +68,48 @@ type UpdateDeliverableRequest struct {
 // miss), then in a single transaction writes both the main
 // `deliverables` row (version=1) and the matching
 // `deliverable_versions` row. Returns the created Deliverable.
-func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDeliverableRequest) (*model.Deliverable, *Error) {
+// CreateDeliverable: F-015 cross-tenant check (Lead-accepted 2026-06-13).
+// Deliverable has no own ProjectID; parent task.ProjectID is the
+// canonical signal. Caller must be in the same project as the
+// parent task AND the agent (defensive, same as TASK-420).
+func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDeliverableRequest, callerProjectID uuid.UUID) (*model.Deliverable, *Error) {
 	var errs validation.Errors
 	validation.NotEmpty(req.Title, "title", "Title", &errs)
 	if errs.HasErrors() {
 		return nil, validationError(errs)
+	}
+
+	// F-015: cross-tenant check (Lead-accepted 2026-06-13, path-implied).
+	// Deliverable has no own ProjectID; parent task.ProjectID is the
+	// canonical signal. Caller must be in the same project as the
+	// parent task AND the agent (defensive, same as TASK-420).
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
+	task, err := s.store.Tasks().GetByID(req.TaskID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFound("Task not found")
+	}
+	if err != nil {
+		return nil, internalError("Failed to fetch parent task")
+	}
+	if task.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
+	}
+	agent, err := s.store.Agents().GetByID(req.AgentID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFound("Agent not found")
+	}
+	if err != nil {
+		return nil, internalError("Failed to fetch parent agent")
+	}
+	if agent.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
+	}
+	// Defensive: the parent task and the agent must be in the same project
+	// (per Lead brief: "Defensive 404 if any of the three diverge")
+	if task.ProjectID != agent.ProjectID {
+		return nil, crossTenantBlocked()
 	}
 
 	// F-023 DoS hardening: cap the markdown content size at
@@ -147,7 +184,13 @@ func (s *DeliverableService) CreateDeliverable(ctx context.Context, req CreateDe
 }
 
 // GetDeliverable returns the deliverable by id. 404 on miss.
-func (s *DeliverableService) GetDeliverable(ctx context.Context, id uuid.UUID) (*model.Deliverable, *Error) {
+// GetDeliverable: F-015 cross-tenant check. Resolves the parent
+// task's ProjectID and verifies it matches callerProjectID.
+func (s *DeliverableService) GetDeliverable(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) (*model.Deliverable, *Error) {
+	// F-015: cross-tenant check (Lead-accepted 2026-06-13, path-implied).
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
 	d, err := s.store.Deliverables().GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -155,6 +198,17 @@ func (s *DeliverableService) GetDeliverable(ctx context.Context, id uuid.UUID) (
 		}
 		s.log.Error("failed to get deliverable", zap.Error(err))
 		return nil, internalError("Failed to get deliverable")
+	}
+	task, err := s.store.Tasks().GetByID(ctx, d.TaskID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFound("Parent task not found")
+	}
+	if err != nil {
+		s.log.Error("failed to get parent task", zap.Error(err))
+		return nil, internalError("Failed to get parent task")
+	}
+	if task.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
 	}
 	return d, nil
 }
@@ -164,9 +218,46 @@ func (s *DeliverableService) GetDeliverable(ctx context.Context, id uuid.UUID) (
 // least one of TaskID or AgentID to be set; if both are uuid.Nil
 // we 400 with a validation error. The store handles the
 // pagination mechanics (default 50, max 200).
-func (s *DeliverableService) ListDeliverables(ctx context.Context, filter model.DeliverableFilter) (*model.DeliverableListResult, *Error) {
+// ListDeliverables: F-015 cross-tenant check. If filters are set,
+// resolve each to the parent's project_id and verify membership in
+// callerProjectID. Cross-tenant miss returns 404 CROSS_TENANT_BLOCKED
+// for the whole list (do not leak which filter was bad).
+func (s *DeliverableService) ListDeliverables(ctx context.Context, filter model.DeliverableFilter, callerProjectID uuid.UUID) (*model.DeliverableListResult, *Error) {
 	if filter.TaskID == uuid.Nil && filter.AgentID == uuid.Nil {
 		return nil, validationSingle("filter", "Provide task_id or agent_id to filter")
+	}
+	// F-015: cross-tenant check (Lead-accepted 2026-06-13, path-implied).
+	// Per-filter resolution: if TaskID set, check task.ProjectID; if
+	// AgentID set, check agent.ProjectID. The envelope is generic
+	// (404 CROSS_TENANT_BLOCKED) but each filter is checked individually.
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
+	if filter.TaskID != nil && *filter.TaskID != uuid.Nil {
+		task, err := s.store.Tasks().GetByID(ctx, *filter.TaskID)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, notFound("Task not found")
+		}
+		if err != nil {
+			s.log.Error("failed to resolve task filter", zap.Error(err))
+			return nil, internalError("Failed to resolve task filter")
+		}
+		if task.ProjectID != callerProjectID {
+			return nil, crossTenantBlocked()
+		}
+	}
+	if filter.AgentID != nil && *filter.AgentID != uuid.Nil {
+		agent, err := s.store.Agents().GetByID(ctx, *filter.AgentID)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, notFound("Agent not found")
+		}
+		if err != nil {
+			s.log.Error("failed to resolve agent filter", zap.Error(err))
+			return nil, internalError("Failed to resolve agent filter")
+		}
+		if agent.ProjectID != callerProjectID {
+			return nil, crossTenantBlocked()
+		}
 	}
 	result, err := s.store.Deliverables().List(ctx, filter)
 	if err != nil {
@@ -187,7 +278,8 @@ func (s *DeliverableService) ListDeliverables(ctx context.Context, filter model.
 // (deliverable_id, version) on the version insert is mapped
 // to 409 (the in-memory store returns ErrAlreadyExists; the
 // postgres store maps pg 23505 to ErrAlreadyExists).
-func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID, req UpdateDeliverableRequest) (*model.Deliverable, *Error) {
+// UpdateDeliverable: F-015 cross-tenant check, same shape as Get.
+func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID, req UpdateDeliverableRequest, callerProjectID uuid.UUID) (*model.Deliverable, *Error) {
 	var errs validation.Errors
 	validation.NotEmpty(req.Title, "title", "Title", &errs)
 	if errs.HasErrors() {
@@ -204,6 +296,10 @@ func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID
 		)
 	}
 
+	// F-015: cross-tenant check (Lead-accepted 2026-06-13, path-implied).
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
 	current, err := s.store.Deliverables().GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -211,6 +307,18 @@ func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID
 		}
 		s.log.Error("failed to read deliverable for update", zap.Error(err))
 		return nil, internalError("Failed to read deliverable")
+	}
+	// Resolve the deliverable's parent task and verify project match.
+	parentTask, err := s.store.Tasks().GetByID(ctx, current.TaskID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFound("Parent task not found")
+	}
+	if err != nil {
+		s.log.Error("failed to read parent task for cross-tenant check", zap.Error(err))
+		return nil, internalError("Failed to read parent task")
+	}
+	if parentTask.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
 	}
 
 	now := time.Now().UTC()
@@ -272,13 +380,31 @@ func (s *DeliverableService) UpdateDeliverable(ctx context.Context, id uuid.UUID
 // itself doesn't exist. The store does not enforce the
 // deliverable existence — the service does the existence
 // check (cheaper than a join).
-func (s *DeliverableService) ListDeliverableVersions(ctx context.Context, deliverableID uuid.UUID) ([]*model.DeliverableVersion, *Error) {
-	if _, err := s.store.Deliverables().GetByID(ctx, deliverableID); err != nil {
+// ListDeliverableVersions: F-015 cross-tenant check, same shape as Get.
+func (s *DeliverableService) ListDeliverableVersions(ctx context.Context, deliverableID uuid.UUID, callerProjectID uuid.UUID) ([]*model.DeliverableVersion, *Error) {
+	// F-015: cross-tenant check (Lead-accepted 2026-06-13, path-implied).
+	if callerProjectID == uuid.Nil {
+		return nil, missingProjectHeader()
+	}
+	deliverable, err := s.store.Deliverables().GetByID(ctx, deliverableID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, notFound("Deliverable not found")
 		}
 		s.log.Error("failed to lookup deliverable for list versions", zap.Error(err))
 		return nil, internalError("Failed to list versions")
+	}
+	// Resolve the deliverable's parent task and verify project match.
+	parentTask, err := s.store.Tasks().GetByID(ctx, deliverable.TaskID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFound("Parent task not found")
+	}
+	if err != nil {
+		s.log.Error("failed to read parent task for cross-tenant check", zap.Error(err))
+		return nil, internalError("Failed to read parent task")
+	}
+	if parentTask.ProjectID != callerProjectID {
+		return nil, crossTenantBlocked()
 	}
 	versions, err := s.store.DeliverableVersions().ListVersions(ctx, deliverableID)
 	if err != nil {
