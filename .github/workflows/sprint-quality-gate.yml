@@ -12,6 +12,23 @@
 # =============================================================================
 
 name: Sprint Quality Gate
+# ----------------------------------------------------------------------
+# Sprint Quality Gate -- continue-on-error exceptions (TASK-431)
+# ----------------------------------------------------------------------
+# The following 8 steps are INTENTIONALLY non-blocking for Sprint 5:
+#   Step 6  go vet ./...                                    (Sprint 4 Go 1.25 / golangci-lint mismatch; TASK-426)
+#   Step 7  go build ./...                                  (cascades from step 6)
+#   Step 8  go test -count=1 -timeout 5m ./internal/...     (cascades from step 6/7)
+#   Step 9  docker compose -f docker-compose.yml config    (no-Go on local devs; CI is canonical)
+#   Step 10 docker compose up -d                            (smoke -- Sprint 4 follow-up TASK-426)
+#   Step 11 wait for /v1/healthz (120s)                     (smoke)
+#   Step 12 curl -fsS http://localhost:8080/v1/healthz     (smoke)
+#   Step 13 go test -count=1 -timeout 10m ./internal/integration/...  (smoke, depends on stack)
+# These are documented as legitimate exceptions; the gate does not fail on them.
+# The TASK-431 baseline finding (PR #5, test/sqg-verify-broken-baseline) revealed
+# that additional failures are hidden behind these masks; Sprint 5 follow-ups
+# (TASK-512, TASK-513, TASK-514) own the cleanup.
+# ----------------------------------------------------------------------
 
 on:
   push:

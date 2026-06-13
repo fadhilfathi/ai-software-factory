@@ -49,13 +49,11 @@ jobs:
       # them for the Sprint 4 closeout.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
-        continue-on-error: true
         with:
           version: latest
           working-directory: ./src
           args: --timeout=5m
       - name: Check formatting
-        continue-on-error: true  # Sprint 4: 35+ files of pre-existing formatting drift; filed as Sprint 5 follow-up
         run: |
           go fmt ./...
           if [ -n "$(git status --porcelain -- '*.go')" ]; then
@@ -80,7 +78,6 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --loglevel=warn
       - name: Run npm run lint
-        continue-on-error: true
         run: npm run lint
 
   test-frontend:
