@@ -514,12 +514,17 @@ func (s *ExecutionService) UpdateExecutionStatus(ctx context.Context, id uuid.UU
 	if err != nil {
 		return nil, err
 	}
+	if current.Status == newStatus {
+		// Idempotent no-op. PATCHing the same status is a 200
+		// (e.g. the dispatcher's mock worker has already moved
+		// the execution to running/completed by the time a
+		// client retry arrives). The state-machine check below
+		// would otherwise reject same-state transitions and
+		// turn idempotent retries into 409s.
+		return current, nil
+	}
 	if !isValidExecutionTransition(current.Status, newStatus) {
 		return nil, fmt.Errorf("%w: %s → %s", ErrInvalidStateTransition, current.Status, newStatus)
-	}
-	if current.Status == newStatus {
-		// Idempotent no-op. Skip the write.
-		return current, nil
 	}
 	updated, err := s.store.Executions().UpdateStatus(ctx, id, newStatus, errorMessage)
 	if err != nil {

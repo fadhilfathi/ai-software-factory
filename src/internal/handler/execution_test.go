@@ -217,7 +217,46 @@ func TestExecutionHandler_GetByID_404(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestExecutionHandler_List_WithFilters(t *testing.T) {
-	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	// Inline router setup so we can slow the mock worker.
+	// The default newExecutionTestRouter uses MockSleep=0,
+	// which lets the worker race ahead and drive all 4
+	// executions to a terminal state before the test can
+	// issue the status=pending filter. With MockSleep=500ms
+	// the executions stay in pending long enough for the
+	// filter to see at least one row.
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-rid-exec-list-001")
+		c.Set("user_id", uuid.NewString())
+		c.Next()
+	})
+	st := store.NewMemoryStore()
+	cfg := &service.ExecutionServiceConfig{
+		MockSleep:       func() time.Duration { return 500 * time.Millisecond },
+		MockFailureRate: 0.0,
+	}
+	// Slow the production-runtime path too so the worker
+	// stays in pending/running long enough for the test to
+	// observe at least one pending row.
+	runtime := aion.NewMockRuntime()
+	runtime.SetDefaultScript(aion.FakeScript{Delay: 500 * time.Millisecond})
+	svc := service.NewExecutionService(st, zap.NewNop(), cfg, runtime)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = svc.Shutdown(ctx)
+	})
+	h := NewExecutionHandler(svc, zap.NewNop())
+	v1 := r.Group("/v1")
+	{
+		v1.POST("/executions", h.Create)
+		v1.GET("/executions", h.List)
+		v1.GET("/executions/:id", h.GetByID)
+		v1.PATCH("/executions/:id", h.Patch)
+	}
+	r = r
+	s := st
 	taskA, agentA, projectA := seedExecTaskAndAgent(t, s)
 	taskB, agentB, _ := seedExecTaskAndAgent(t, s)
 
@@ -226,14 +265,25 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 	// Cross-project semantics are covered by the new tests at the
 	// bottom of this file (TASK-422).
 	require.NoError(t, s.Tasks().Update(&model.Task{ID: taskB, ProjectID: projectA, Title: "relinked", Status: model.TaskOpen, Priority: model.PriorityNormal, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
-	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentIdle, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
+	// Re-link agentB to projectA. The store's Update checks
+	// optimistic-concurrency via the Version field, so we
+	// read the current row first to keep Version in sync.
+	// Without this, Update sees Version=0 and rejects the
+	// call as a version conflict.
+	curAgent, err := s.Agents().GetByID(context.Background(), agentB)
+	require.NoError(t, err)
+	curAgent.ProjectID = projectA
+	curAgent.Name = "relinked-b"
+	require.NoError(t, s.Agents().Update(context.Background(), curAgent))
 
 	// Seed: 2 on (taskA, agentA), 1 on (taskA, agentB), 1 on (taskB, agentA).
+	// Use a fresh local name inside the for loop to avoid
+	// shadowing the outer err from the curAgent fetch above.
 	for i := 0; i < 2; i++ {
-		_, err := svc.CreateExecution(context.Background(), taskA, agentA, projectA)
-		require.NoError(t, err)
+		_, errSeed := svc.CreateExecution(context.Background(), taskA, agentA, projectA)
+		require.NoError(t, errSeed)
 	}
-	_, err := svc.CreateExecution(context.Background(), taskA, agentB, projectA)
+	_, err = svc.CreateExecution(context.Background(), taskA, agentB, projectA)
 	require.NoError(t, err)
 	_, err = svc.CreateExecution(context.Background(), taskB, agentA, projectA)
 	require.NoError(t, err)
@@ -276,7 +326,46 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestExecutionHandler_Patch_200(t *testing.T) {
-	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	// Inline router setup so we can slow the mock worker. The
+	// default newExecutionTestRouter uses MockSleep=0, which
+	// lets the worker race ahead and drive the execution to a
+	// terminal state before the test can PATCH a forward status.
+	// With MockSleep=500ms the test has a clear window to issue
+	// the PATCHes in order.
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-rid-exec-001")
+		c.Set("user_id", uuid.NewString())
+		c.Next()
+	})
+	st := store.NewMemoryStore()
+	cfg := &service.ExecutionServiceConfig{
+		MockSleep:       func() time.Duration { return 500 * time.Millisecond },
+		MockFailureRate: 0.0,
+	}
+	// Slow the production-runtime path too: register a 500ms-delay
+	// default script on the mock runtime so the worker stays
+	// in pending/running state long enough for the test's PATCH
+	// to win the race. Without this, the worker terminates in
+	// microseconds and the PATCH sees a terminal execution.
+	runtime := aion.NewMockRuntime()
+	runtime.SetDefaultScript(aion.FakeScript{Delay: 500 * time.Millisecond})
+	svc := service.NewExecutionService(st, zap.NewNop(), cfg, runtime)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = svc.Shutdown(ctx)
+	})
+	h := NewExecutionHandler(svc, zap.NewNop())
+	v1 := r.Group("/v1")
+	{
+		v1.POST("/executions", h.Create)
+		v1.GET("/executions", h.List)
+		v1.GET("/executions/:id", h.GetByID)
+		v1.PATCH("/executions/:id", h.Patch)
+	}
+	s := st
 	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)

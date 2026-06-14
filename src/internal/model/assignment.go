@@ -131,5 +131,5 @@ type AssignmentEvent struct {
 	AssignedBy   *uuid.UUID       `json:"assigned_by,omitempty"`
 	AssignedAt   time.Time        `json:"assigned_at"`
 	Action       AssignmentAction `json:"action"`
-	Notes        string           `json:"notes,omitempty"`
+	Notes        string           `json:"notes"`
 }
