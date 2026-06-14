@@ -27,14 +27,14 @@ import (
 	"testing"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/handler"
-	"github.com/fadhilfathi/AI-Software-Factory/internal/integration"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
-	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -47,7 +47,7 @@ import (
 // test UUIDs. Each test gets a fresh env (fresh in-memory store).
 type IntegrationTestEnv struct {
 	Router    *gin.Engine
-	Store     integration.Store
+	Store     store.Store
 	UserID    string
 	ProjectID string
 }
@@ -59,7 +59,7 @@ type IntegrationTestEnv struct {
 // middleware.Auth (JWT + API-key validation) is not invoked.
 // Auth correctness is TASK-417/418's lane; integration tests
 // focus on behaviour behind the auth boundary.
-func newIntegrationRouter(t *testing.T, s integration.Store) *IntegrationTestEnv {
+func newIntegrationRouter(t *testing.T, s store.Store) *IntegrationTestEnv {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	log := zap.NewNop()
@@ -68,7 +68,7 @@ func newIntegrationRouter(t *testing.T, s integration.Store) *IntegrationTestEnv
 	agentSvc := service.NewAgentService(s)
 	taskSvc := service.NewTaskService(s, log)
 	assignmentSvc := service.NewAssignmentService(s, capSvc, log)
-	execSvc := service.NewExecutionService(s, log, nil, nil, aion.NewMockRuntime()) // TASK-501: in-process mock for integration tests
+	execSvc := service.NewExecutionService(s, log, nil, aion.NewMockRuntime()) // TASK-501: in-process mock for integration tests. 4-arg signature: (store, log, cfg, runtime); nil cfg uses DefaultExecutionServiceConfig.
 	delivSvc := service.NewDeliverableService(s, log)
 
 	r := gin.New()
@@ -222,7 +222,7 @@ func assertMalformedUUID400(t *testing.T, w *httptest.ResponseRecorder) {
 // ----------------------------------------------------------------------------
 
 func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
-	env := newIntegrationRouter(t, integration.NewMemoryStore())
+	env := newIntegrationRouter(t, store.NewMemoryStore())
 	projectID := env.ProjectID
 
 	// Step 1: POST /v1/agents — create the agent
@@ -331,7 +331,7 @@ func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
 // a 500 in any sub-case skips that row and is recorded for
 // the acceptance report.
 func TestProjectScopedRoutes_RejectMalformedUUIDs(t *testing.T) {
-	env := newIntegrationRouter(t, integration.NewMemoryStore())
+	env := newIntegrationRouter(t, store.NewMemoryStore())
 	projectID := env.ProjectID
 	validTaskID := uuid.New().String()
 	validAgentID := uuid.New().String()
