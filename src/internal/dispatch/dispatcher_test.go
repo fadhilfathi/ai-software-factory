@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
