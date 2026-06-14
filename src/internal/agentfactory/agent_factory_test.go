@@ -355,7 +355,7 @@ func TestShutdown_ClosesRuntime(t *testing.T) {
 		ProjectID:   uuid.New(),
 		Model:       "x",
 		Provider:    "y",
-		Input:       "z",
+		Input:       json.RawMessage("z"),
 	})
 	if !errors.Is(err, aion.ErrRuntimeClosed) {
 		t.Errorf("Spawn after Close: err = %v; want ErrRuntimeClosed", err)
