@@ -151,6 +151,14 @@ func (h *AgentHandler) Create(c *gin.Context) {
 //   - cursor: opaque cursor from a previous page
 //   - limit: 1-200, default 50
 func (h *AgentHandler) List(c *gin.Context) {
+	if qpid := c.Query("project_id"); qpid != "" {
+		if _, err := uuid.Parse(qpid); err != nil {
+			respondError(c, &service.Error{
+				Status:  400, Code: "VALIDATION_ERROR", Message: "Invalid project_id query parameter",
+			})
+			return
+		}
+	}
 	projectID, ok := projectIDFromContext(c)
 	if !ok {
 		respondError(c, &service.Error{
