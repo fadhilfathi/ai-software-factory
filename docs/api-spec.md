@@ -1026,13 +1026,112 @@ The TASK-403 capability validation seam (see §The Capability System (A-002)) is
 
 ---
 
-## Executions
+## The Execution Engine (B-001)
 
-An execution records the lifecycle of an agent working on a task.
+An execution records the lifecycle of an agent working on a task. The
+execution state machine is the spine of B-001, C-002 (Recovery), and the
+runtime worker pool §aion (Runtime).
+
+### Lifecycle
+
+6 states per the brief:
+
+```
+QUEUED → ASSIGNED → RUNNING → REVIEW → COMPLETED
+                   \         /             /
+                    \       /             /
+                     \     /             /
+                      \   /             /
+                       \ /             /
+                        FAILED <———————————
+```
+
+| State     | Meaning                                                                    | Agent assigned? |
+|-----------|----------------------------------------------------------------------------|-----------------|
+| `queued`  | The task is in the dispatch queue. No agent has been picked yet.          | No (NULL)       |
+| `assigned`| An agent has been picked. The worker pool is preparing to spawn it.       | Yes             |
+| `running` | The worker is actively running (aion instance is up, script is executing).| Yes             |
+| `review`  | The worker reported `WorkerStatusCompleted`. Awaiting reviewer decision.  | Yes             |
+| `completed`| Terminal. Reviewer accepted the deliverables.                             | Yes             |
+| `failed`  | Terminal. Either the worker errored, the reviewer rejected, or the queue   | (last assigned) |
+|           | could not place the task.                                                  |                 |
+
+### Valid transitions
+
+- `queued` → `assigned` (queue dispatcher picks an agent)
+- `queued` → `failed` (queue gives up: capability mismatch persists past deadline, no eligible agent, etc.)
+- `assigned` → `running` (worker pool starts the aion instance)
+- `assigned` → `failed` (worker pool cannot start the instance: aion runtime unavailable, etc.)
+- `assigned` → `queued` (operator or recovery returns the execution to the queue: agent retracted, dispatcher re-runs the eligibility check, the new pick may be a different agent)
+- `running` → `review` (worker reports `WorkerStatusCompleted` and emits a deliverable; runtime calls `MarkReview(ctx, execID, agentID, projectID, message)`)
+- `running` → `failed` (worker reports `WorkerStatusError` or panics; runtime calls `MarkFailed(ctx, execID, agentID, projectID, reason)`)
+- `review` → `completed` (reviewer accepts: PATCH `/v1/executions/:id/review` with `{ accepted: true }`)
+- `review` → `failed` (reviewer rejects: PATCH `/v1/executions/:id/review` with `{ accepted: false, reason: "..." }`)
+
+### Terminal states
+
+`completed` and `failed` are terminal. No transitions out. The
+PATCH `/v1/executions/:id/status` and `/review` endpoints reject
+writes to a terminal state with `409 INVALID_STATE_TRANSITION`.
+
+### Worker status § execution status mapping
+
+The runtime worker pool (see §aion Runtime, the `WorkerStatus`
+enum in `model/aion.go`) reports its own state. The execution
+service translates worker events into execution transitions:
+
+| Worker event                  | Runtime call to service           | New execution status |
+|-------------------------------|------------------------------------|----------------------|
+| `WorkerStatusStarting`        | (none; execution is already        | `running`            |
+|                               | `assigned` and the runtime is      |                      |
+|                               | about to call `MarkRunning`)       |                      |
+| `WorkerStatusRunning`         | `MarkRunning(ctx, execID, ...)`    | `running` (idempotent same-state) |
+| `WorkerStatusCompleted`       | `MarkReview(ctx, execID, ...)`     | `review` (NOT `completed`; reviewer decides) |
+| `WorkerStatusError`           | `MarkFailed(ctx, execID, ..., err)`| `failed`             |
+| `WorkerStatusPanicked`        | `MarkFailed(ctx, execID, ..., panic msg)` | `failed`       |
+
+The runtime → service handoff is the spine of commit 3. The runtime
+does not call `MarkCompleted` directly; the reviewer action is
+the only path into `completed`.
 
 ### List Executions
 ```
-GET /v1/executions?task_id=<uuid>&agent_id=<uuid>&page=1&limit=20
+GET /v1/executions?task_id=<uuid>&agent_id=<uuid>&status=<queued|assigned|running|review|completed|failed>&page=1&limit=20
+```
+
+Query parameters:
+
+- `task_id` (optional, uuid) — filter by task.
+- `agent_id` (optional, uuid) — filter by assigned agent. Rows in
+  the `queued` state have `agent_id IS NULL` and are excluded by
+  an `agent_id` filter (the filter is `agent_id = $1`, not the
+  semantics of "any agent". Document this in the client UI as
+  "the queue is not visible on the agent filter").
+- `status` (optional, enum) — one of the 6 lifecycle values.
+  Invalid values return 400 `VALIDATION_ERROR` with a per-field
+  detail on the offending value.
+- `page` (optional, int, default 1).
+- `limit` (optional, int, default 20, max 100).
+
+Response (200):
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "task_id": "uuid",
+      "agent_id": "uuid | null",
+      "project_id": "uuid",
+      "status": "queued | assigned | running | review | completed | failed",
+      "created_at": "RFC 3339",
+      "started_at": "RFC 3339 | null",
+      "completed_at": "RFC 3339 | null",
+      "failure_reason": "string | null"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "count": 42, "server_time": "RFC 3339" }
+}
 ```
 
 ### Get Execution Details
@@ -1040,19 +1139,148 @@ GET /v1/executions?task_id=<uuid>&agent_id=<uuid>&page=1&limit=20
 GET /v1/executions/:id
 ```
 
-### Update Execution Status
+Response (200):
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "task_id": "uuid",
+    "agent_id": "uuid | null",
+    "project_id": "uuid",
+    "status": "queued | assigned | running | review | completed | failed",
+    "created_at": "RFC 3339",
+    "started_at": "RFC 3339 | null",
+    "completed_at": "RFC 3339 | null",
+    "failure_reason": "string | null",
+    "events": [
+      { "at": "RFC 3339", "from": "queued", "to": "assigned", "by": "system | user:<uuid>" },
+      { "at": "RFC 3339", "from": "assigned", "to": "running", "by": "system" },
+      { "at": "RFC 3339", "from": "running", "to": "review", "by": "system" }
+    ]
+  }
+}
+```
+
+### Create Execution
+```
+POST /v1/executions
+
+Request:
+{
+  "task_id": "uuid",
+  "agent_id": "uuid"   // optional; omit to enqueue without an agent (creates a `queued` row with agent_id NULL)
+}
+```
+
+Semantics:
+
+- With `agent_id` set: the execution row is created in `assigned`
+  state. The runtime worker pool is expected to start the aion
+  instance and call `MarkRunning` shortly after.
+- With `agent_id` omitted: the execution row is created in
+  `queued` state. The dispatch loop is expected to pick the
+  agent and call `Assign` (which transitions `queued`
+  → `assigned`).
+
+Response (201):
+
+```json
+{
+  "data": { "id": "uuid", "status": "queued | assigned", "task_id": "uuid", "agent_id": "uuid | null" }
+}
+```
+
+Error codes:
+
+- 400 `VALIDATION_ERROR` — missing `task_id`, invalid uuid, etc.
+- 400 `MISSING_PROJECT_HEADER` — X-Project-ID header is required.
+- 404 `NOT_FOUND` — task (or agent, if `agent_id` set) does not exist.
+- 404 `CROSS_TENANT_BLOCKED` — task, agent, or caller is in a
+  different project than the call header. The 404 (not 403) avoids
+  existence leakage, per the F-014 standing pattern.
+- 409 `INVALID_STATE_TRANSITION` — a row already exists for this
+  task in a non-terminal state; re-create is rejected.
+
+### Update Execution Status (worker/runtime handoff)
 ```
 PATCH /v1/executions/:id/status
 
 Request:
 {
-  "status": "completed"
+  "to": "running | review | failed",
+  "reason": "string"   // required for `to: failed`
 }
 ```
 
-Status Transitions:
-- `pending` → `running`
-- `running` → `completed`, `failed`
+This endpoint is the worker/runtime handoff. It accepts only the
+transitions that the runtime can legitimately trigger:
+`assigned → running`, `running → review`, `running → failed`,
+`assigned → failed`. The `completed` transition is NOT accepted here;
+use PATCH `/v1/executions/:id/review` instead. The `queued` and
+`assigned` transitions are reserved for the queue dispatcher (commit 3).
+
+Response (200):
+
+```json
+{
+  "data": { "id": "uuid", "from": "assigned", "to": "running", "at": "RFC 3339" }
+}
+```
+
+Error codes:
+
+- 400 `VALIDATION_ERROR` — invalid `to` value, missing `reason` for `to: failed`.
+- 404 `NOT_FOUND` — execution does not exist.
+- 404 `CROSS_TENANT_BLOCKED` — caller is in a different project.
+- 409 `INVALID_STATE_TRANSITION` — the transition is not allowed from
+  the current state. Response includes a `current_status` and
+  `requested_status` in the per-field detail so the runtime can
+  branch on the actual reason (e.g. "already completed").
+
+### Review Execution
+```
+PATCH /v1/executions/:id/review
+
+Request:
+{
+  "accepted": true | false,
+  "reason": "string"   // required when accepted is false; optional when true
+}
+```
+
+The reviewer action is the only path into `completed`. The
+execution must be in `review` state; transitions from any other
+state return 409 `INVALID_STATE_TRANSITION`.
+
+Response (200):
+
+```json
+{
+  "data": { "id": "uuid", "from": "review", "to": "completed | failed", "at": "RFC 3339" }
+}
+```
+
+### Cancel Execution
+```
+DELETE /v1/executions/:id
+```
+
+Operator-only. Transitions a non-terminal execution to `failed`
+with `failure_reason = "cancelled by operator"`. The runtime is
+expected to stop the worker on its next checkpoint (the C-002
+recovery system polls for the `failed` state and frees the agent).
+
+Response (204).
+
+### F-014 cross-tenant invariant
+
+Every endpoint in this section follows the F-014 triple-check:
+
+1. `caller_project_id` (from `X-Project-ID`) must be set (400 `MISSING_PROJECT_HEADER`).
+2. The execution row's `project_id` must equal `caller_project_id` (404 `CROSS_TENANT_BLOCKED`).
+3. For PATCH `/status` and POST `/executions` with `agent_id` set, the agent's
+   `project_id` must also equal `caller_project_id` (defensive triple-check).
 
 ---
 
