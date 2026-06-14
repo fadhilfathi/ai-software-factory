@@ -151,7 +151,14 @@ func (b *MemoryBus) Publish(event Event) bool {
 	rb.push(event)
 	b.mu.Unlock()
 
-	allDelivered := true
+		// allDelivered is true iff there was at least one subscriber
+		// AND every subscriber's channel accepted the event. The
+		// len(subs) > 0 check makes the bool meaningful for the
+		// publish-after-unsubscribe case: with zero subscribers,
+		// there is nothing to deliver to, so we report false.
+		// Otherwise an empty for-loop would leave allDelivered at
+		// its (true) initial value and mislead the caller.
+		allDelivered := len(subs) > 0
 	for _, sub := range subs {
 		select {
 		case sub.ch <- event:
