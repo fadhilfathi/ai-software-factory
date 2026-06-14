@@ -4,7 +4,7 @@
 |--------------|----------------------------------------------------------------------|
 | Owner        | Guardian (slot `019ec4fe-604f-7551-9a76-38a621ddd256`)               |
 | Status       | **APPROVED with conditions**                                         |
-| Reviewed     | commit `8b85d26` (merge of `origin/main` @ `64c0d09` into `guardian/d-002-security-review`) |
+| Reviewed     | commit `1d727e5` (merge of `origin/main` @ `c1a65df` into `guardian/d-002-security-review`) |
 | Date         | 2026-06-14                                                           |
 | Sign-off     | Conditional: B-002 must close F-D002-001 before merge; E-001 must harden F-D002-003 |
 
@@ -12,13 +12,13 @@
 
 ## 1. Executive Summary
 
-The D-002 review covers the codebase as of `8b85d26` against the four preliminary findings in `docs/reset/d002-security-checklist.md`, the 18 Sprint 4 findings in `docs/sprint4/security-report.md`, and a fresh walk of the checklist buckets (auth, access, threat, secret hygiene, dependencies).
+The D-002 review covers the codebase as of `1d727e5` (post-merge with `origin/main` @ `c1a65df`) against the four preliminary findings in `docs/reset/d002-security-checklist.md`, the 18 Sprint 4 findings in `docs/sprint4/security-report.md`, and a fresh walk of the checklist buckets (auth, access, threat, secret hygiene, dependencies). 22 new commits landed during the review window (A-002 hand-backs, A-002 work proper, A-003, B-001, CI hygiene, validate-infra update); findings have been re-validated against the merged state.
 
 **Headline results:**
 
 - **4 preliminary findings**: 2 HIGH OPEN (`F-D002-001` webhook SSRF stub, `F-D002-004` IDOR via `X-Project-ID`), 1 CLOSED (`F-D002-002` API key fix verified), 1 INFO OPEN (`F-D002-003` auth cookie `secure=true` dev/prod tension).
-- **18 Sprint 4 findings**: 6 fixed in patch (`F-001`, `F-002`, `F-006`, `F-021`, `F-017`, `F-023`), 4 cross-tenant (`F-013/14/15/16`) PARTIALLY MITIGATED by the path-implied fix in `TASK-419..422` and WAIVED-BY-LEADER for the table-level fix, 8 still OPEN with explicit Sprint 6+ targets in the table below.
-- **14 new findings** filed from this review's walk of the checklist.
+- **18 Sprint 4 findings**: 6 fixed in patch (`F-001`, `F-002`, `F-006`, `F-021`, `F-017`, `F-023`), 4 cross-tenant (`F-013/14/15/16`) PARTIALLY MITIGATED by the path-implied fix in `TASK-419..422` and WAIVED-BY-LEADER for the table-level fix, 8 still OPEN with explicit Sprint 6+ targets in the table below. **One of the previously-logged new findings (`F-D002-007` assignment notes length cap) is now FIXED at `0688bfe`** — see §4.
+- **13 new findings** filed from this review's checklist walk (one fewer than the initial draft because `F-D002-007` is now closed).
 - **Dependencies**: 3 dev-dep advisories in `frontend/package.json` (1 LOW, 2 MODERATE; none runtime-exposed). `govulncheck` is BLOCKED locally (no Go toolchain on this host) — recommend Ops add it to CI in the next gate pass.
 - **Test coverage** for the security surface is generally good (role matrix has 7 explicit tests, middleware has 5 `APIKeyMiddleware` subtests covering the `F-002` fix, `TestRoleMatrix_AdminOnly_Register_RejectsViewer` covers `F-021`). Gaps remain in `handler/auth.go`, `handler/webhook.go`, and `handler/project.go` (no `_test.go`).
 
@@ -27,7 +27,7 @@ The D-002 review covers the codebase as of `8b85d26` against the four preliminar
 - `F-D002-001` → **B-002 wave** (handwritten `webhooks_safety.go`, ~150 lines; brief in `docs/reset/fix-f-d002-001-webhook-ssrf.md`).
 - `F-D002-003` → **E-001 follow-up** (feature-flag the `secure` cookie flag; default off in dev, on in prod).
 - `F-D002-004` → **Sprint 6+** (`project_memberships` table + `requireProjectMember` middleware; out of scope per brief).
-- `F-D002-005..018` → **Sprint 7+** (logged, not blocking; see §5).
+- `F-D002-005..018` minus `007` → **Sprint 7+** (logged, not blocking; see §5).
 
 ---
 
@@ -99,7 +99,7 @@ Legend: **Sev** = HIGH | MEDIUM | LOW | INFO. **Status** = OPEN | CLOSED | MITIG
 |-------------|-----|------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|--------|---------|
 | F-D002-005  | LOW | `router/router.go`                             | `POST /v1/webhooks` is gated by `RequireAnyRole(writeRole)` (developer+admin). Bulk-register of a webhook in another project's namespace is implicitly possible if the caller spoofs `X-Project-ID` (couples to F-D002-004). Should be admin-only. | OPEN   | Sprint 7|
 | F-D002-006  | INFO| `service/webhook.go:webhookEventAllowlist`     | Allowed events are a hard-coded slice in code. Adding an event requires a code change + redeploy. Should be config-driven for ops. | OPEN   | Sprint 7|
-| F-D002-007  | INFO| `service/assignment.go:AssignTaskToAgent` notes| `Notes` field is unbounded (no `MaxLength` check). 4kB is typical. Low risk (not rendered as HTML), but a noisy client could fill the DB. | OPEN   | Sprint 7|
+| F-D002-007  | INFO| `service/assignment.go:AssignTaskToAgent` notes| `Notes` field length cap (1 KiB per api-spec §3.1). **Status: FIXED at `0688bfe`** — see §4. Moved to RESOLVED. | CLOSED @ `0688bfe` | — |
 | F-D002-008  | LOW | `middleware/middleware.go:isPublic`            | `isPublic(path)` does prefix match (`strings.HasPrefix`). A future public path `/v1/audit` would be a prefix of (or mistaken for) `/v1/audit-logs`. Current set is fine; pattern is fragile. | OPEN   | Sprint 7|
 | F-D002-009  | LOW | `middleware/middleware.go` rate limit          | Rate limit is per-IP only. An attacker with many IPs (e.g. botnet) can amplify. Per-user rate limit (keyed on `user_id` from JWT/API key) recommended for the v1 GA. | OPEN   | Sprint 7|
 | F-D002-010  | INFO| Edge / reverse proxy                            | No CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, or Permissions-Policy observed in `router/router.go` (handlers attach these via middleware only if added). Frontend is served by Next.js; backend JSON has no HTML surface, so impact is low. Should be added at the reverse proxy. | OPEN   | Sprint 7|
@@ -130,6 +130,7 @@ Legend: **Sev** = HIGH | MEDIUM | LOW | INFO. **Status** = OPEN | CLOSED | MITIG
 | F-021 | TASK-425         | `router/router.go` — register gated by `RequireRole(admin)`; `TestRoleMatrix_AdminOnly_Register_RejectsViewer` confirms. |
 | F-023 | (code fix, no TASK)| `service/deliverable.go:122-127, 292-297` — `MaxDeliverableContentBytes` cap.      |
 | A-001-followup | `64c0d09` | Role length tightened to 80 chars (code + DB migration `027`).                        |
+| F-D002-007 | `0688bfe` | `service/assignment.go:153` — `if int64(len(notes)) > model.MaxAssignmentNotesBytes` (1 KiB) returns `validationSingle("notes", "exceeds 1 KiB (1024 bytes)")`. Test in `service/assignment_table_test.go` covers it. |
 
 ---
 
@@ -163,7 +164,6 @@ Legend: **Sev** = HIGH | MEDIUM | LOW | INFO. **Status** = OPEN | CLOSED | MITIG
 
 - F-D002-005 — admin-only on `POST /v1/webhooks`.
 - F-D002-006 — webhook event allowlist in config.
-- F-D002-007 — `MaxLength` on assignment `Notes`.
 - F-D002-008 — exact-match instead of `HasPrefix` in `isPublic`.
 - F-D002-009 — per-user rate limit.
 - F-D002-010 — security headers at the reverse proxy.
@@ -231,6 +231,6 @@ Out of scope for this review's deliverable but flagged for the next E-003 gate p
 
 The 14 new findings (F-D002-005..018) are non-blocking. None of them are HIGH or CRITICAL. Most are test-coverage gaps and dev-dep advisories. Recommend a Sprint 7 hardening pass to close them in batch.
 
-**This review is filed as `docs/reset/security-review.md` on branch `guardian/d-002-security-review` at `8b85d26`.** Lead to push to main under E-003 or route as preferred.
+**This review is filed as `docs/reset/security-review.md` on branch `guardian/d-002-security-review` at `1d727e5` (post-merge of `origin/main` @ `c1a65df`).** Lead to push to main under E-003 or route as preferred.
 
 — Guardian (slot `019ec4fe-604f-7551-9a76-38a621ddd256`), 2026-06-14
