@@ -41,8 +41,14 @@ test_frontend() {
     npm ci --loglevel=warn
   fi
 
-  # If there are no test files, npm test may fail — check first
-  if ls src/**/*.test.* src/**/*.spec.* &>/dev/null 2>&1; then
+  # If there are no test files, npm test may fail - check first.
+  # NOTE: the previous `ls src/**/*.test.*` glob silently missed deep test
+  # files (e.g. components/deliverables/MarkdownRenderer.test.tsx) because
+  # bash's `**` is only recursive with `shopt -s globstar`, which is OFF by
+  # default. Use `find` so the check works on fresh bash on Windows / dash /
+  # sh and any shell without globstar enabled. `-print -quit` makes the
+  # search exit on first match.
+  if find src \( -name '*.test.*' -o -name '*.spec.*' \) -print -quit 2>/dev/null | grep -q .; then
     npm test 2>&1 || echo "  ⚠️  Some tests failed"
   else
     echo "  → No test files found — running lint as test proxy"
