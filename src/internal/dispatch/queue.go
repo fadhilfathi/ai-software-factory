@@ -100,7 +100,12 @@ type DispatchQueue interface {
 	//   - otherwise: drop (or move to a DLQ, for a future
 	//     Postgres-backed impl)
 	// The reason is recorded for observability.
-	Nack(ctx context.Context, spec aion.WorkerSpec, result aion.WorkerResult, reason error) error
+	//
+	// The returned NackResult tells the dispatcher what the queue
+	// did with the spec, so the dispatcher can update its stats
+	// (Retries / Dropped). On ErrUnknownSpec the result is the
+	// zero value (neither dropped nor retried).
+	Nack(ctx context.Context, spec aion.WorkerSpec, result aion.WorkerResult, reason error) (NackResult, error)
 
 	// Close marks the queue as closed. After Close:
 	//   - Enqueue returns ErrQueueClosed
@@ -114,6 +119,24 @@ type DispatchQueue interface {
 	// in-flight). For observability / metrics only; not a
 	// synchronization point.
 	Len() int
+}
+
+// ----------------------------------------------------------------------------
+// NackResult
+// ----------------------------------------------------------------------------
+
+// NackResult is the outcome of a DispatchQueue.Nack call. It tells the
+// dispatcher whether the spec was retried, dropped, or neither (e.g.
+// ErrUnknownSpec). Exactly one of Dropped / Retried is set on a successful
+// Nack; the zero value means no work was done (the spec was unknown).
+//
+// This was added as part of A-002-05 (dispatcher stats) so the
+// dispatcher can correctly count Dropped (DLQ) and Retries outcomes
+// without having to inspect the queue's internal counters (which would
+// race under concurrent workers).
+type NackResult struct {
+	Dropped bool // spec hit the DLQ (attempts exhausted, queue closed, or ctx cancelled)
+	Retried bool // spec was re-queued (attempts remaining)
 }
 
 // ----------------------------------------------------------------------------
@@ -306,13 +329,16 @@ func (q *InMemoryQueue) Ack(ctx context.Context, spec aion.WorkerSpec, result ai
 // the spec is re-queued with Attempt+1. Otherwise, it is dropped
 // (added to the dead-letter list). The reason is recorded for
 // observability but not persisted in Sprint 5.
-func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result aion.WorkerResult, reason error) error {
+//
+// The returned NackResult tells the dispatcher what happened to the
+// spec so it can update its stats (Retries / Dropped). See NackResult.
+func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result aion.WorkerResult, reason error) (NackResult, error) {
 	q.mu.Lock()
 	_, inFlight := q.inFlight[spec.ExecutionID]
 	closed := q.closed
 	q.mu.Unlock()
 	if !inFlight {
-		return ErrUnknownSpec
+		return NackResult{}, ErrUnknownSpec
 	}
 	if closed {
 		// If the queue is closed, we can't re-queue. Drop.
@@ -321,7 +347,7 @@ func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result a
 		q.dropped++
 		q.dlq = append(q.dlq, spec)
 		q.mu.Unlock()
-		return nil
+		return NackResult{Dropped: true}, nil
 	}
 	if spec.Attempt < q.maxAttempts {
 		// Re-queue with Attempt+1.
@@ -339,7 +365,7 @@ func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result a
 		// queue is being closed concurrently.
 		select {
 		case q.pending <- retry:
-			return nil
+			return NackResult{Retried: true}, nil
 		case <-ctx.Done():
 			// Re-queue failed (ctx cancelled). Put the spec back
 			// in-flight so a future Ack/Nack can find it. Note:
@@ -348,7 +374,7 @@ func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result a
 			q.mu.Lock()
 			q.inFlight[retry.ExecutionID] = retry
 			q.mu.Unlock()
-			return ctx.Err()
+			return NackResult{}, ctx.Err()
 		}
 	}
 	// Attempt >= max → dead-letter (drop).
@@ -357,7 +383,7 @@ func (q *InMemoryQueue) Nack(ctx context.Context, spec aion.WorkerSpec, result a
 	q.dropped++
 	q.dlq = append(q.dlq, spec)
 	q.mu.Unlock()
-	return nil
+	return NackResult{Dropped: true}, nil
 }
 
 // Close marks the queue as closed. Enqueue will return ErrQueueClosed;

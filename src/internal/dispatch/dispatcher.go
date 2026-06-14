@@ -155,8 +155,10 @@ func (d *Dispatcher) handleSpec(ctx context.Context, log *zap.Logger, spec aion.
 		d.mu.Lock()
 		d.stats.Failed++
 		d.mu.Unlock()
-		if nackErr := d.queue.Nack(ctx, spec, aion.WorkerResult{ExecutionID: spec.ExecutionID, Status: aion.WorkerFailed}, err); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
+		if nackRes, nackErr := d.queue.Nack(ctx, spec, aion.WorkerResult{ExecutionID: spec.ExecutionID, Status: aion.WorkerFailed}, err); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
 			log.Warn("nack after spawn error failed", zap.Error(nackErr))
+		} else if nackErr == nil {
+			d.recordNackResult(nackRes)
 		}
 		return
 	}
@@ -172,8 +174,14 @@ func (d *Dispatcher) handleSpec(ctx context.Context, log *zap.Logger, spec aion.
 		//      Nack with WorkerFailed and the error.
 		//   2. ctx was cancelled. We mark the result as
 		//      WorkerCancelled and Nack.
+		//
+		// The runtime may wrap ctx.Err() as text rather than
+		// with %w (MockRuntime.Wait does this for backward
+		// compatibility), so we also check ctx.Err() directly.
+		// This keeps Cancelled stats correct under
+		// cancellation in tests and production.
 		status := aion.WorkerFailed
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			status = aion.WorkerCancelled
 		}
 		result = aion.WorkerResult{
@@ -190,8 +198,10 @@ func (d *Dispatcher) handleSpec(ctx context.Context, log *zap.Logger, spec aion.
 			d.stats.Failed++
 		}
 		d.mu.Unlock()
-		if nackErr := d.queue.Nack(ctx, spec, result, err); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
+		if nackRes, nackErr := d.queue.Nack(ctx, spec, result, err); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
 			log.Warn("nack after wait error failed", zap.Error(nackErr))
+		} else if nackErr == nil {
+			d.recordNackResult(nackRes)
 		}
 		return
 	}
@@ -222,9 +232,27 @@ func (d *Dispatcher) handleSpec(ctx context.Context, log *zap.Logger, spec aion.
 		}
 		d.mu.Unlock()
 		reason := fmt.Errorf("worker terminal status: %s (error: %s)", result.Status, result.ErrorMessage)
-		if nackErr := d.queue.Nack(ctx, spec, result, reason); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
+		if nackRes, nackErr := d.queue.Nack(ctx, spec, result, reason); nackErr != nil && !errors.Is(nackErr, ErrUnknownSpec) {
 			log.Warn("nack after terminal status failed", zap.Error(nackErr))
+		} else if nackErr == nil {
+			d.recordNackResult(nackRes)
 		}
+	}
+}
+
+// recordNackResult updates the dispatcher's Retries / Dropped counters
+// based on the queue's Nack outcome. Added as part of A-002-05 so the
+// dispatcher can track these without inspecting the queue's internal
+// counters (which would race under concurrent workers). Called only on
+// successful Nack (no error returned).
+func (d *Dispatcher) recordNackResult(res NackResult) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if res.Dropped {
+		d.stats.Dropped++
+	}
+	if res.Retried {
+		d.stats.Retries++
 	}
 }
 
