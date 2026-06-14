@@ -134,14 +134,14 @@ func TestExecutionStateMachine_TableDriven(t *testing.T) {
 			// Attempt the transition under test.
 			var (
 				gotErr error
-				after  *model.Execution
+				after  *ReviewAction
 			)
 			switch tc.via {
 			case "Review":
 				accepted := tc.to == model.ExecutionStatusCompleted
 				after, gotErr = svc.ReviewExecution(ctx, exec.ExecutionID, accepted, tc.reason, projectID)
 				if gotErr == nil {
-					assert.Equal(t, tc.to, after.Status, "ReviewAction.To mismatch")
+					assert.Equal(t, tc.to, after.To, "ReviewAction.To mismatch")
 				}
 			case "Cancel":
 				gotErr = svc.CancelExecution(ctx, exec.ExecutionID, projectID)
