@@ -295,7 +295,11 @@ func RateLimit(cfg RateLimitConfig) gin.HandlerFunc {
 	}()
 
 	return func(c *gin.Context) {
-		key := cfg.KeyFunc(c)
+		keyFunc := cfg.KeyFunc
+		if keyFunc == nil {
+			keyFunc = DefaultRateLimitConfig().KeyFunc
+		}
+		key := keyFunc(c)
 
 		mu.Lock()
 		b, exists := buckets[key]
