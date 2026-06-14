@@ -174,7 +174,7 @@ func (h *DeliverableHandler) Create(c *gin.Context) {
 		writeServiceError(c, svcErr)
 		return
 	}
-	writeJSON(c, http.StatusCreated, toDeliverableResponse(d))
+	c.JSON(http.StatusCreated, gin.H{"data": toDeliverableResponse(d)})
 }
 
 // ----------------------------------------------------------------------------
@@ -227,7 +227,7 @@ func (h *DeliverableHandler) List(c *gin.Context) {
 		writeServiceError(c, svcErr)
 		return
 	}
-	writeJSON(c, http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 // ----------------------------------------------------------------------------
@@ -250,7 +250,7 @@ func (h *DeliverableHandler) Get(c *gin.Context) {
 		writeServiceError(c, svcErr)
 		return
 	}
-	writeJSON(c, http.StatusOK, toDeliverableResponse(d))
+	c.JSON(http.StatusOK, gin.H{"data": toDeliverableResponse(d)})
 }
 
 // ----------------------------------------------------------------------------
@@ -291,7 +291,7 @@ func (h *DeliverableHandler) Update(c *gin.Context) {
 		writeServiceError(c, svcErr)
 		return
 	}
-	writeJSON(c, http.StatusOK, toDeliverableResponse(d))
+	c.JSON(http.StatusOK, gin.H{"data": toDeliverableResponse(d)})
 }
 
 // ----------------------------------------------------------------------------

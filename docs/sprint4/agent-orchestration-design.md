@@ -122,7 +122,7 @@ A **Capability** is a named, cataloged skill that an Agent can declare. Capabili
 | `id`         | UUID        | Primary key.                                                                                         |
 | `name`       | string      | Stable machine name, e.g. `coding`, `testing`. Unique. Lowercase, `[a-z][a-z0-9-]{0,40}`.            |
 | `display_name` | string    | Human label, e.g. `Coding`. 1–80 chars.                                                              |
-| `category`   | enum/string | One of: `architecture`, `coding`, `testing`, `security`, `devops`, `leadership`.                     |
+| `category`   | enum/string | One of: `architecture`, `coding`, `testing`, `security`, `devops`, `documentation`, `project_management`, `data_engineering`, `leadership`. |
 | `description`| string      | Optional, ≤ 500 chars.                                                                               |
 | `version`    | int         | Monotonically increasing; bumped when the capability definition changes. Default 1.                  |
 | `created_at` | timestamptz | Server-set.                                                                                          |
@@ -130,7 +130,7 @@ A **Capability** is a named, cataloged skill that an Agent can declare. Capabili
 
 ### 3.2 The standard capability catalog (seed data)
 
-These six categories cover everything the platform supports this sprint. The system is open to extension via `POST /v1/capabilities` (admin-only) but the seed set is fixed:
+These nine capabilities cover everything the platform supports this sprint. The system is open to extension via `POST /v1/capabilities` (admin-only) but the seed set is fixed:
 
 | Name            | Display Name   | Category     | Purpose                                                                |
 |-----------------|----------------|--------------|------------------------------------------------------------------------|
@@ -139,9 +139,14 @@ These six categories cover everything the platform supports this sprint. The sys
 | `testing`       | Testing        | testing      | Runs the test suite, reports coverage, files bug reports.              |
 | `security`      | Security       | security     | Threat modeling, code audit, secret scanning.                          |
 | `devops`        | DevOps         | devops       | Builds, deploys, infra-as-code, monitoring.                            |
-| `leadership`    | Leader         | leadership   | Plans, decomposes work, dispatches tasks, resolves conflicts. Reserved for the **Lead** agent role. |
+| `documentation` | Documentation  | documentation | Writes user-facing docs, READMEs, API references, runbooks.            |
+| `project_management` | Project Management | project_management | Plans, decomposes work, manages dependencies, tracks progress. |
+| `data_engineering` | Data Engineering | data_engineering | Designs schemas, builds data pipelines, analytics.                  |
+| `leadership`    | Leader         | leadership   | Plans, decomposes work, dispatches tasks, resolves conflicts. **Reserved** for the **Lead** agent role and the only capability excluded from the assignable set. |
 
 > **Why a separate `leadership` capability:** the Leader agent is structurally different — it does not own deliverables, it owns the assignment workflow itself. Encoding it as a capability lets the assignment engine express "the only agent that can take a planning task is the Leader" via the same rules engine as everything else.
+>
+> **Assignable vs reserved:** eight of the nine catalog capabilities are **assignable** — they may appear in a task's `required_capabilities` list and the validation seam (TASK-403) will match agents against them. The one exception is `leadership`, which is reserved for the Leader and is rejected by the validation seam with `CAPABILITY_NOT_ASSIGNABLE` if it appears on a task. See `“The Capability System (A-002)” in `api-spec.md` for the full surface, the validation response shape, and the role / agent-type default mappings.
 
 ### 3.3 Custom capabilities
 

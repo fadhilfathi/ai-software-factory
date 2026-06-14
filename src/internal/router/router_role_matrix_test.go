@@ -8,10 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/router"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,8 +71,20 @@ func buildRouter(t *testing.T, auth *fakeAuthService) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
+	// Build a memory-backed Services so the "role-allow" tests
+	// (admin DELETE /v1/tasks/:id, developer PUT /v1/tasks/:id,
+	// admin PATCH /v1/executions/:id) reach the handler cleanly
+	// and get a 404 "no such task/execution" rather than a
+	// nil-pointer panic. The role-deny tests short-circuit at
+	// the role middleware and never touch the handlers, so
+	// leaving the other services nil is safe.
+	st := store.NewMemoryStore()
+	log := zap.NewNop()
 	svc := &service.Services{
-		Auth: auth,
+		Auth:      auth,
+		Log:       log,
+		Task:      service.NewTaskService(st, log),
+		Execution: service.NewExecutionService(st, log, nil, aion.NewMockRuntime()),
 	}
 
 	r := router.New(svc, middleware.CORSConfig{}, middleware.RateLimitConfig{

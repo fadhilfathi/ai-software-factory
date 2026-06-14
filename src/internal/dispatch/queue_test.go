@@ -236,7 +236,7 @@ func TestNack_RetryUnderMax(t *testing.T) {
 	_ = q.Enqueue(context.Background(), spec)
 	got, _ := q.Dequeue(context.Background())
 	// Nack with attempt 1 < max 3 → re-queue with attempt 2.
-	if err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test")); err != nil {
+	if _, err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test")); err != nil {
 		t.Fatalf("Nack: %v", err)
 	}
 	// The retry should be on the queue.
@@ -258,7 +258,7 @@ func TestNack_RetryExhaustion(t *testing.T) {
 	_ = q.Enqueue(context.Background(), spec)
 	got, _ := q.Dequeue(context.Background())
 	// Nack with attempt 3 == max 3 → DLQ, not retry.
-	if err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test")); err != nil {
+	if _, err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test")); err != nil {
 		t.Fatalf("Nack: %v", err)
 	}
 	if q.Len() != 0 {
@@ -274,9 +274,9 @@ func TestNack_Idempotent(t *testing.T) {
 	spec := validSpecWithAttempt(1) // attempt 1
 	_ = q.Enqueue(context.Background(), spec)
 	got, _ := q.Dequeue(context.Background())
-	_ = q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test"))
+	_, _ = q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test"))
 	// After nack (which re-queued), the original spec is no longer in-flight.
-	err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test"))
+	_, err := q.Nack(context.Background(), got, aion.WorkerResult{Status: aion.WorkerFailed}, errors.New("test"))
 	if !errors.Is(err, ErrUnknownSpec) {
 		t.Errorf("Nack idempotent: got %v, want ErrUnknownSpec", err)
 	}

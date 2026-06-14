@@ -5,6 +5,8 @@ Run with: python scripts/validate-infra.py
 """
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -27,6 +29,25 @@ def warn(msg):
 
 def ok(msg):
     print(f"OK:    {msg}")
+
+
+def run_capture(cmd, timeout=60):
+    """Run a shell command; return (returncode, stdout, stderr) tuple.
+
+    Captures both streams. Returns (-1, "", "<error message>") if the
+    command could not be spawned (e.g. executable not on PATH)."""
+    try:
+        result = subprocess.run(
+            cmd, shell=isinstance(cmd, str), cwd=ROOT,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except FileNotFoundError as e:
+        return -1, "", f"command not found: {e}"
+    except subprocess.TimeoutExpired as e:
+        return -2, "", f"timeout after {timeout}s: {e}"
+    except OSError as e:
+        return -3, "", f"OS error: {e}"
 
 
 def main():
@@ -190,6 +211,40 @@ def main():
     wt = ROOT / "..tester01-wt"
     if (ROOT / "..tester01-wt").exists():
         ok(f"tester01 staging worktree present: ../tester01-wt")
+
+    # 13. Go static-analysis (best-effort; not blocking if Go is missing)
+    # Added 2026-06-14 per Lead follow-up to E-003. Catches the A-002-01
+    # bug class (local var shadows struct field in agentfactory/...) via
+    # `go vet ./...` and formatting drift via `gofmt -l .`. Future
+    # expansion: `staticcheck` for SA4009/SA4010 if Go toolchain is on PATH.
+    go_path = shutil.which("go")
+    if go_path is None:
+        warn("Go toolchain not on PATH; skipping go vet + gofmt checks. "
+             "Re-run on a host with Go installed (e.g. CI runner) for full coverage.")
+    else:
+        ok(f"Go toolchain found at {go_path} ({run_capture([go_path, 'version'])[1].strip()})")
+
+        # go vet ./... — surfaces shadowed vars, unreachable code, etc.
+        rc, out, errout = run_capture([go_path, "vet", "./..."], timeout=120)
+        if rc == 0:
+            ok("go vet ./... passed (no diagnostics)")
+        elif rc == -1:
+            warn(f"go vet could not be executed: {errout}")
+        else:
+            err(f"go vet ./... reported issues (rc={rc}):\n{out}{errout}")
+
+        # gofmt -l . — lists files that would be reformatted; empty output = clean.
+        rc, out, errout = run_capture([go_path, "gofmt", "-l", "."], timeout=60)
+        if rc == 0:
+            if not out.strip():
+                ok("gofmt -l .: all Go files formatted correctly")
+            else:
+                unformatted = [line for line in out.splitlines() if line.strip()]
+                err(f"gofmt -l .: {len(unformatted)} file(s) need formatting: {unformatted}")
+        elif rc == -1:
+            warn(f"gofmt could not be executed: {errout}")
+        else:
+            warn(f"gofmt -l . returned rc={rc}: {errout}")
 
     print()
     print("=" * 60)

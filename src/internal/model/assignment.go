@@ -6,6 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// MaxAssignmentNotesBytes caps the size of the `notes` field on
+// POST /v1/tasks/:id/assign per api-spec.md §3.1. The cap matches
+// the precedent set by MaxDeliverableContentBytes: an explicit
+// application-level ceiling (well under any HTTP-body size limit)
+// so the caller gets a structured PAYLOAD_TOO_LARGE error rather
+// than a 413 from the http server body reader.
+//
+// The assignment_events.notes column itself is TEXT (no DB-level
+// limit); this constant is enforced in the service and the
+// handler. 1 KiB = 1024 bytes (binary KiB per the spec).
+const MaxAssignmentNotesBytes int64 = 1 << 10
+
 // AssignmentStatus is the lifecycle state of a single assignment row
 // in the `assignments` table (migration 019). Persisted as TEXT with
 // a CHECK constraint. Only one row per task may have status='active'
@@ -131,5 +143,5 @@ type AssignmentEvent struct {
 	AssignedBy   *uuid.UUID       `json:"assigned_by,omitempty"`
 	AssignedAt   time.Time        `json:"assigned_at"`
 	Action       AssignmentAction `json:"action"`
-	Notes        string           `json:"notes,omitempty"`
+	Notes        string           `json:"notes"`
 }

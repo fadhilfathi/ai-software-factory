@@ -124,9 +124,6 @@ func (s *AssignmentService) AssignTaskToAgent(
 	if task.ProjectID != callerProjectID {
 		return nil, crossTenantBlocked()
 	}
-	if err != nil {
-		return nil, notFound("Task not found")
-	}
 
 	// Quick existence check for the agent (a single GetByID). We
 	// don't read the agent's capabilities here — that's the
@@ -146,8 +143,15 @@ func (s *AssignmentService) AssignTaskToAgent(
 	if task.ProjectID != agent.ProjectID {
 		return nil, crossTenantBlocked()
 	}
-	if err != nil {
-		return nil, notFound("Agent not found")
+
+	// Notes length cap (api-spec.md §3.1: notes ≤ 1 KiB).
+	// Enforced as a domain rule, not a transport rule: a 400
+	// VALIDATION_ERROR (not a 413 PAYLOAD_TOO_LARGE) signals the
+	// caller that the field is too long, with a per-field detail
+	// entry so the client UI can highlight the field. The handler
+	// has a parallel check for early rejection (no DB roundtrip).
+	if int64(len(notes)) > model.MaxAssignmentNotesBytes {
+		return nil, validationSingle("notes", "exceeds 1 KiB (1024 bytes)")
 	}
 
 	if agent.Status != model.AgentIdle {

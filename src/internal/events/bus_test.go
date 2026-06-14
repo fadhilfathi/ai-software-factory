@@ -43,7 +43,7 @@ func TestMemoryBus_RoundTrip(t *testing.T) {
 		ProjectID:   projectA,
 		TaskID:      taskID,
 		AgentID:     agentID,
-		From:        model.ExecutionStatusPending,
+		From:        model.ExecutionStatusAssigned,
 		To:          model.ExecutionStatusRunning,
 	}
 
@@ -65,8 +65,8 @@ func TestMemoryBus_RoundTrip(t *testing.T) {
 		if got.ProjectID != projectA {
 			t.Errorf("ProjectID = %v, want %v", got.ProjectID, projectA)
 		}
-		if got.From != model.ExecutionStatusPending {
-			t.Errorf("From = %v, want %v", got.From, model.ExecutionStatusPending)
+		if got.From != model.ExecutionStatusAssigned {
+			t.Errorf("From = %v, want %v", got.From, model.ExecutionStatusAssigned)
 		}
 		if got.To != model.ExecutionStatusRunning {
 			t.Errorf("To = %v, want %v", got.To, model.ExecutionStatusRunning)

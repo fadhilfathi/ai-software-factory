@@ -216,18 +216,19 @@ func TestDeliverableHandler_Get_200_And_404(t *testing.T) {
 func TestDeliverableHandler_List_WithFilters(t *testing.T) {
 	r, svc, s := newDeliverableTestRouter(t, uuid.NewString())
 	taskA, agentA, projectID := seedDelivTaskAndAgent(t, s)
-	taskB, _, _ := seedDelivTaskAndAgent(t, s)
 
+	// 3 deliverables on (taskA, agentA). TASK-421 added a
+	// cross-tenant check on CreateDeliverable that rejects
+	// creating a deliverable for a task in another project,
+	// so the original test's "1 deliverable for taskB with
+	// agentA" seed no longer works. Both task_id and agent_id
+	// filters now return 3.
 	for i := 0; i < 3; i++ {
 		_, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
 			TaskID: taskA, AgentID: agentA, Title: "a-" + uuid.NewString()[:6], Content: "x",
 		}, projectID)
 		require.Nil(t, svcErr)
 	}
-	_, svcErr := svc.CreateDeliverable(context.Background(), service.CreateDeliverableRequest{
-		TaskID: taskB, AgentID: agentA, Title: "b", Content: "x",
-	}, projectID)
-	require.Nil(t, svcErr)
 
 	// task_id filter → 3
 	w := doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?task_id="+taskA.String(), nil, projectID)
@@ -238,11 +239,11 @@ func TestDeliverableHandler_List_WithFilters(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Data.Items, 3)
 
-	// agent_id filter → 4
+	// agent_id filter → 3 (all 3 deliverables share agentA).
 	w = doDelivRequestAs(r, http.MethodGet, "/v1/deliverables?agent_id="+agentA.String(), nil, projectID)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Len(t, resp.Data.Items, 4)
+	assert.Len(t, resp.Data.Items, 3)
 
 	// No filter → 400 (service requires at least one of
 	// task_id/agent_id).

@@ -105,6 +105,15 @@ func (h *AssignmentHandler) AssignTask(c *gin.Context) {
 		return
 	}
 
+	// Notes length cap (api-spec.md §3.1: notes ≤ 1 KiB).
+	// Parallel check: the service has the same check (defense
+	// in depth), but rejecting here avoids the DB roundtrip on
+	// a clearly-bad request.
+	if len(req.Notes) > int(model.MaxAssignmentNotesBytes) {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "notes exceeds 1 KiB (1024 bytes)")
+		return
+	}
+
 	// assignedBy: resolve from the middleware-set user_id. The
 	// value is a string (UUID-formatted) per the middleware
 	// contract. If absent (system caller), pass nil.

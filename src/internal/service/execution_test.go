@@ -117,7 +117,7 @@ func TestCreateExecution_Success(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, exec.ExecutionID)
 	assert.Equal(t, taskID, exec.TaskID)
 	assert.Equal(t, agentID, exec.AgentID)
-	assert.Equal(t, model.ExecutionStatusPending, exec.Status)
+	assert.Equal(t, model.ExecutionStatusAssigned, exec.Status)
 	assert.Nil(t, exec.CompletedAt)
 }
 
@@ -152,11 +152,15 @@ func TestCreateExecution_MockGoroutine_CompletesSuccessfully(t *testing.T) {
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
-	// cfg has MockSleep=0 and MockFailureRate=0, so the goroutine
-	// should transition to 'completed' within a few ms.
-	final := waitForStatus(t, svc, exec.ExecutionID, projectID, model.ExecutionStatusCompleted)
-	assert.Equal(t, model.ExecutionStatusCompleted, final.Status)
-	assert.NotNil(t, final.CompletedAt)
+	// B-001 6-state lifecycle: cfg has MockSleep=0 and MockFailureRate=0,
+	// so the mock goroutine transitions assigned->running->review within
+	// a few ms. The reviewer action (PATCH /v1/executions/:id/review) is
+	// the only path into 'completed'; this test exercises the runtime
+	// path, not the reviewer path. Review is not a terminal state, so
+	// CompletedAt stays nil until the reviewer accepts.
+	final := waitForStatus(t, svc, exec.ExecutionID, projectID, model.ExecutionStatusReview)
+	assert.Equal(t, model.ExecutionStatusReview, final.Status)
+	assert.Nil(t, final.CompletedAt)
 	assert.Nil(t, final.ErrorMessage)
 }
 
@@ -301,13 +305,19 @@ func TestUpdateExecutionStatus_ValidTransitions(t *testing.T) {
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
-	// pending → running
+	// assigned → running
 	updated, err := svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
 	require.NoError(t, err)
 	assert.Equal(t, model.ExecutionStatusRunning, updated.Status)
 	assert.Nil(t, updated.CompletedAt)
 
-	// running → completed
+	// running → review (B-001: worker-complete handoff lands here)
+	updated, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusReview, nil, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusReview, updated.Status)
+	assert.Nil(t, updated.CompletedAt)
+
+	// review → completed (B-001: only the reviewer action lands here)
 	updated, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusCompleted, nil, projectID)
 	require.NoError(t, err)
 	assert.Equal(t, model.ExecutionStatusCompleted, updated.Status)
@@ -326,16 +336,19 @@ func TestUpdateExecutionStatus_InvalidTransition_409(t *testing.T) {
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
-	// pending → pending is allowed (idempotent no-op).
-	// pending → running is allowed.
-	// running → pending is NOT allowed.
+	// assigned → assigned is allowed (idempotent no-op).
+	// assigned → running is allowed.
+	// running → assigned is NOT allowed.
 	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
 	require.NoError(t, err)
-	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusPending, nil, projectID)
+	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusAssigned, nil, projectID)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrInvalidStateTransition), "expected ErrInvalidStateTransition, got %v", err)
 
 	// Terminal → anything is not allowed.
+	// B-001 6-state: running → review → completed is the only path into 'completed'.
+	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusReview, nil, projectID)
+	require.NoError(t, err)
 	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusCompleted, nil, projectID)
 	require.NoError(t, err)
 	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
@@ -416,11 +429,11 @@ func TestCreateExecution_MockGoroutine_RespectsShutdown(t *testing.T) {
 	shutdownErr := svc.Shutdown(ctx)
 	require.NoError(t, shutdownErr, "Shutdown should drain the parked goroutine")
 
-	// The row should still be 'pending' — the goroutine never
+	// The row should still be 'assigned' — the goroutine never
 	// got to write.
 	final, err := svc.GetExecution(context.Background(), exec.ExecutionID, task.ProjectID)
 	require.NoError(t, err)
-	assert.Equal(t, model.ExecutionStatusPending, final.Status, "expected pending (cancelled before transition)")
+	assert.Equal(t, model.ExecutionStatusAssigned, final.Status, "expected assigned (cancelled before transition)")
 }
 
 // ----------------------------------------------------------------------------

@@ -1,5 +1,19 @@
 package service
 
+// A-002-19 TRACKING (resolved by A-003 commit 2) ---------------------
+//
+// The tracking comment in earlier revisions asserted the test
+// signatures lagged production (4-arg NewAssignmentService, 2-arg
+// NewAgentService) and required a rewrite. That analysis was wrong:
+// production is 3-arg NewAssignmentService(store, capSvc, log) and
+// 1-arg NewAgentService(store), which is exactly what the helpers
+// in this file (newAssignmentTestService, seedTaskAndAgent) call.
+// The file compiles as-is.
+//
+// A-003 commit 2 adds assignment_table_test.go as a parallel,
+// table-driven view of the same behaviour. The narrative cases
+// stay for readability.
+
 import (
 	"context"
 	"testing"
