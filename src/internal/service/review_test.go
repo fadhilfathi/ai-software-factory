@@ -19,6 +19,7 @@ type MockStore struct {
 }
 
 func (m *MockStore) Users() store.UserStore           { return m.Called().Get(0).(store.UserStore) }
+func (m *MockStore) Workers() store.WorkerStore       { return m.Called().Get(0).(store.WorkerStore) }
 func (m *MockStore) Projects() store.ProjectStore     { return m.Called().Get(0).(store.ProjectStore) }
 func (m *MockStore) Agents() store.AgentStore         { return m.Called().Get(0).(store.AgentStore) }
 func (m *MockStore) Capabilities() store.CapabilityStore { return m.Called().Get(0).(store.CapabilityStore) }
