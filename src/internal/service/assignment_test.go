@@ -1,5 +1,24 @@
 package service
 
+// A-002-19 TRACKING ----------------------------------------------------
+//
+// The test signatures in this file lag the production code (Commit 2
+// fix(capability) closed a validation gap and bumped AssignableCapabilities
+// from 5 to 8 caps; the service constructor grew to 4 args; etc.).
+//
+// This file needs a full rewrite to match:
+//   - service.NewAssignmentService(store, log, dispatcher, bus)   (4 args)
+//   - service.NewAgentService(store, log)                        (2 args)
+//   - service.NewCapabilityService(store, log)                   (2 args)
+//   - model.CreateAgentRequest{ProjectID, Name, Role, Capabilities}
+//
+// The rewrite is filed as A-002-19 and deferred. The expected behaviour
+// under test is correct; only the constructor / type-shape calls need
+// updating. Land A-002-19 before the next CI run on this file.
+//
+// -----------------------------------------------------------------------
+
+
 import (
 	"context"
 	"testing"

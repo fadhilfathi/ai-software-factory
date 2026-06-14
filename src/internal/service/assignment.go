@@ -124,9 +124,6 @@ func (s *AssignmentService) AssignTaskToAgent(
 	if task.ProjectID != callerProjectID {
 		return nil, crossTenantBlocked()
 	}
-	if err != nil {
-		return nil, notFound("Task not found")
-	}
 
 	// Quick existence check for the agent (a single GetByID). We
 	// don't read the agent's capabilities here — that's the
@@ -145,9 +142,6 @@ func (s *AssignmentService) AssignTaskToAgent(
 	// (per Lead brief: "Defensive 404 if any of the three diverge")
 	if task.ProjectID != agent.ProjectID {
 		return nil, crossTenantBlocked()
-	}
-	if err != nil {
-		return nil, notFound("Agent not found")
 	}
 
 	if agent.Status != model.AgentIdle {
