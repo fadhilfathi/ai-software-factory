@@ -9,11 +9,17 @@ import (
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
-	svc service.AuthService
+	svc          service.AuthService
+	cookieSecure bool
 }
 
-func NewAuthHandler(svc service.AuthService) *AuthHandler {
-	return &AuthHandler{svc: svc}
+// NewAuthHandler builds an AuthHandler. cookieSecure is the value to use
+// for the `Secure` flag on the refresh-token cookie. It should come from
+// cfg.Auth.CookieSecure (see src/internal/config). Surfaced by D-002
+// sign-off finding F-D002-003 so local HTTP dev (secure=false) and prod
+// (secure=true) can both work without code changes.
+func NewAuthHandler(svc service.AuthService, cookieSecure bool) *AuthHandler {
+	return &AuthHandler{svc: svc, cookieSecure: cookieSecure}
 }
 
 type loginRequest struct {
@@ -40,7 +46,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Set Refresh Token in an HttpOnly, Secure, SameSite=Strict cookie
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", true, true)
+	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", h.cookieSecure, true)
 
 	// Return Access Token in JSON
 	writeJSON(c, http.StatusOK, gin.H{
@@ -65,7 +71,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 	// Set new Refresh Token in an HttpOnly, Secure, SameSite=Strict cookie
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", true, true)
+	c.SetCookie("refresh_token", result.RefreshToken, 7*24*3600, "/", "", h.cookieSecure, true)
 
 	// Return Access Token in JSON
 	writeJSON(c, http.StatusOK, gin.H{
@@ -88,7 +94,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 
 	// Clear the refresh token cookie
-	c.SetCookie("refresh_token", "", -1, "/", "", true, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", h.cookieSecure, true)
 
 	writeJSON(c, http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

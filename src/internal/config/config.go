@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -29,6 +30,14 @@ type DatabaseConfig struct {
 
 type AuthConfig struct {
 	JWTSecret string
+	// CookieSecure controls the `Secure` flag on the refresh-token
+	// cookie set by handler.AuthHandler (Login / Refresh / Logout).
+	// Defaults: true when APP_ENV (or ENV) is "production" or "prod",
+	// false otherwise. Override with AUTH_COOKIE_SECURE=true|false.
+	// Surfaced by D-002 sign-off finding F-D002-003: a hard-coded
+	// `secure=true` broke local HTTP dev. The env var makes the
+	// production/dev split explicit at deploy time.
+	CookieSecure bool
 }
 
 type CORSConfig struct {
@@ -103,7 +112,8 @@ func Load() *Config {
 			Name:     getEnvRequired("DB_NAME"),
 		},
 		Auth: AuthConfig{
-			JWTSecret: getEnvRequired("JWT_SECRET"),
+			JWTSecret:    getEnvRequired("JWT_SECRET"),
+			CookieSecure: getEnvBool("AUTH_COOKIE_SECURE", isProductionEnv()),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins:   parseCSV(getEnv("CORS_ALLOWED_ORIGINS", "")),
@@ -174,6 +184,20 @@ func getEnvBool(key string, fallback bool) bool {
 		return v == "true" || v == "1"
 	}
 	return fallback
+}
+
+// isProductionEnv reports whether the running process should be treated as
+// a production deployment for the purposes of secure-cookie defaulting and
+// similar dev/prod splits. Checks APP_ENV first, then ENV. Recognised
+// production values: "production", "prod" (case-insensitive). Empty /
+// unrecognised values return false, i.e. dev-friendly defaults.
+func isProductionEnv() bool {
+	for _, k := range []string{"APP_ENV", "ENV"} {
+		if v := strings.ToLower(strings.TrimSpace(os.Getenv(k))); v != "" {
+			return v == "production" || v == "prod"
+		}
+	}
+	return false
 }
 
 func parseCSV(s string) []string {

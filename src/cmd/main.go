@@ -88,7 +88,7 @@ func main() {
 	rateMW := middleware.DefaultRateLimitConfig()
 	rateMW.RequestsPerMinute = cfg.RateLimit.RequestsPerMinute
 	rateMW.Burst = cfg.RateLimit.Burst
-	r := router.New(svc, corsMW, rateMW)
+	r := router.New(svc, cfg, corsMW, rateMW)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

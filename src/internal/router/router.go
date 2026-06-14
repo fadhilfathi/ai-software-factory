@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/handler"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
@@ -34,7 +35,7 @@ func healthzHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
+func New(svc *service.Services, cfg *config.Config, corsConfig middleware.CORSConfig, rateLimitConfig middleware.RateLimitConfig) *gin.Engine {
 	r := gin.New()
 
 	r.Use(middleware.Recovery())
@@ -59,7 +60,7 @@ func New(svc *service.Services, corsConfig middleware.CORSConfig, rateLimitConfi
 	writeRole := middleware.RequireAnyRole("developer", "admin")
 	adminRole := middleware.RequireAnyRole("admin")
 
-	auth := handler.NewAuthHandler(svc.Auth)
+	auth := handler.NewAuthHandler(svc.Auth, cfg.Auth.CookieSecure)
 	projects := handler.NewProjectHandler(svc.Project)
 	agents := handler.NewAgentHandler(svc.Agent)
 	capabilities := handler.NewCapabilityHandler(svc.Agent) // TASK-403: capability routes moved off AgentHandler

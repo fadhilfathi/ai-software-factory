@@ -16,6 +16,7 @@ This document outlines the authentication design for the AI Software Factory bac
   - **Access Token:** Short-lived (15 minutes) for API access.
   - **Refresh Token:** Long-lived (7 days) for generating new Access Tokens.
 - **Storage:** Access token returned in JSON response. Refresh token stored in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie to prevent XSS.
+- **Secure flag (env-driven):** the `Secure` attribute is set from `cfg.Auth.CookieSecure`, which is read at startup from the `AUTH_COOKIE_SECURE` env var. Default: `true` when `APP_ENV` (or `ENV`) is `production`/`prod`, `false` otherwise. This split lets local HTTP dev work (where browsers reject `Secure` cookies on `http://`) without changing code. Surfaced by D-002 sign-off finding F-D002-003.
 
 ### 2. Protected API Access
 - **Endpoint:** Any route under `/api/v1/...` (excluding public paths like `/auth/login`, `/healthz`).
