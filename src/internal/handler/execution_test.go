@@ -1,6 +1,6 @@
 package handler
 
-// HTTP-level tests for ExecutionHandler (TASK-405, Sprint 4).
+// HTTP-level tests for ExecutionHandler (TASK-405, Sprint 4; B-001 Sprint 6).
 //
 // Strategy: drive Gin with a real router, a stub auth middleware
 // (so we can test the "no user_id" → 401 case), and a real
@@ -11,6 +11,8 @@ package handler
 //   - GET    /v1/executions
 //   - GET    /v1/executions/:id
 //   - PATCH  /v1/executions/:id
+//   - PATCH  /v1/executions/:id/review (B-001 reviewer action)
+//   - DELETE /v1/executions/:id       (B-001 operator cancel)
 //   - auth middleware (401)
 
 import (
@@ -77,6 +79,9 @@ func newExecutionTestRouter(t *testing.T, withUserID string) (*gin.Engine, *serv
 		v1.GET("/executions", h.List)
 		v1.GET("/executions/:id", h.GetByID)
 		v1.PATCH("/executions/:id", h.Patch)
+		// B-001 reviewer action + operator cancel.
+		v1.PATCH("/executions/:id/review", h.Review)
+		v1.DELETE("/executions/:id", h.Cancel)
 	}
 	return r, svc, s
 }
@@ -254,6 +259,9 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 		v1.GET("/executions", h.List)
 		v1.GET("/executions/:id", h.GetByID)
 		v1.PATCH("/executions/:id", h.Patch)
+		// B-001 reviewer action + operator cancel.
+		v1.PATCH("/executions/:id/review", h.Review)
+		v1.DELETE("/executions/:id", h.Cancel)
 	}
 	r = r
 	s := st
@@ -309,11 +317,11 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Data.Items, 3)
 
-	// status=pending filter
-	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=pending", projectA, nil)
+	// status=assigned filter (B-001: 6-state lifecycle, 'pending' is gone)
+	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=assigned", projectA, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.GreaterOrEqual(t, len(resp.Data.Items), 1, "expected at least one pending row right after create")
+	assert.GreaterOrEqual(t, len(resp.Data.Items), 1, "expected at least one assigned row right after create")
 
 	// status=garbage → 400
 	w = doExecutionRequest(r, http.MethodGet, "/v1/executions?status=garbage", projectA, nil)
@@ -364,6 +372,9 @@ func TestExecutionHandler_Patch_200(t *testing.T) {
 		v1.GET("/executions", h.List)
 		v1.GET("/executions/:id", h.GetByID)
 		v1.PATCH("/executions/:id", h.Patch)
+		// B-001 reviewer action + operator cancel.
+		v1.PATCH("/executions/:id/review", h.Review)
+		v1.DELETE("/executions/:id", h.Cancel)
 	}
 	s := st
 	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
@@ -489,6 +500,190 @@ func TestExecutionHandler_Patch_CrossTenant_404(t *testing.T) {
 
 	body := map[string]any{"status": "running"}
 	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), uuid.New(), body)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
+}
+// ----------------------------------------------------------------------------
+// PATCH /v1/executions/:id/review (B-001 reviewer action)
+// ----------------------------------------------------------------------------
+
+// seedExecutionInReview creates an execution, drives it through
+// assigned->running->review (via the service), and returns the
+// final row. Used by the reviewer-action tests so they start from
+// the correct state without depending on the mock goroutine's timing.
+func seedExecutionInReview(t *testing.T, svc *service.ExecutionService, s store.Store) (uuid.UUID, uuid.UUID, *model.Execution) {
+	t.Helper()
+	ctx := context.Background()
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(ctx, taskID, agentID, projectID)
+	require.NoError(t, err)
+	updated, err := svc.UpdateExecutionStatus(ctx, exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
+	require.NoError(t, err)
+	updated, err = svc.UpdateExecutionStatus(ctx, exec.ExecutionID, model.ExecutionStatusReview, nil, projectID)
+	require.NoError(t, err)
+	require.Equal(t, model.ExecutionStatusReview, updated.Status)
+	return taskID, projectID, updated
+}
+
+func TestExecutionHandler_Review_Accept_200(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, projectID, exec := seedExecutionInReview(t, svc, s)
+
+	body := map[string]any{"accepted": true}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", projectID, body)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+	var resp struct {
+		Data struct {
+			ID   uuid.UUID             `json:"id"`
+			From model.ExecutionStatus `json:"from"`
+			To   model.ExecutionStatus `json:"to"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, exec.ExecutionID, resp.Data.ID)
+	assert.Equal(t, model.ExecutionStatusReview, resp.Data.From)
+	assert.Equal(t, model.ExecutionStatusCompleted, resp.Data.To)
+
+	// Confirm the row is now in COMPLETED via the service.
+	final, err := svc.GetExecution(context.Background(), exec.ExecutionID, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusCompleted, final.Status)
+	assert.NotNil(t, final.CompletedAt)
+}
+
+func TestExecutionHandler_Review_Reject_200(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, projectID, exec := seedExecutionInReview(t, svc, s)
+
+	body := map[string]any{"accepted": false, "reason": "output is not what the spec asks for"}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", projectID, body)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+	var resp struct {
+		Data struct {
+			To model.ExecutionStatus `json:"to"`
+	} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, model.ExecutionStatusFailed, resp.Data.To)
+
+	final, err := svc.GetExecution(context.Background(), exec.ExecutionID, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusFailed, final.Status)
+	require.NotNil(t, final.ErrorMessage)
+	assert.Equal(t, "output is not what the spec asks for", *final.ErrorMessage)
+}
+
+func TestExecutionHandler_Review_MissingReason_400(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, projectID, exec := seedExecutionInReview(t, svc, s)
+
+	// accepted=false but no reason -> 400 VALIDATION_ERROR.
+	body := map[string]any{"accepted": false}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", projectID, body)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "VALIDATION_ERROR")
+
+	// The execution should still be in REVIEW (no transition happened).
+	final, err := svc.GetExecution(context.Background(), exec.ExecutionID, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusReview, final.Status)
+}
+
+func TestExecutionHandler_Review_MissingAccepted_400(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, projectID, exec := seedExecutionInReview(t, svc, s)
+
+	// No `accepted` field at all -> 400 VALIDATION_ERROR.
+	body := map[string]any{"reason": "missing accepted"}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", projectID, body)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "accepted is required")
+}
+
+func TestExecutionHandler_Review_WrongState_409(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	ctx := context.Background()
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(ctx, taskID, agentID, projectID)
+	require.NoError(t, err)
+	// Row is in ASSIGNED. Review requires REVIEW.
+	body := map[string]any{"accepted": true}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", projectID, body)
+	require.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "INVALID_STATE_TRANSITION")
+}
+
+func TestExecutionHandler_Review_CrossTenant_404(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, _, exec := seedExecutionInReview(t, svc, s)
+
+	body := map[string]any{"accepted": true}
+	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String()+"/review", uuid.New(), body)
+	require.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
+}
+
+// ----------------------------------------------------------------------------
+// DELETE /v1/executions/:id (B-001 operator cancel)
+// ----------------------------------------------------------------------------
+
+func TestExecutionHandler_Cancel_204_FromAssigned(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	ctx := context.Background()
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(ctx, taskID, agentID, projectID)
+	require.NoError(t, err)
+
+	w := doExecutionRequest(r, http.MethodDelete, "/v1/executions/"+exec.ExecutionID.String(), projectID, nil)
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	final, err := svc.GetExecution(ctx, exec.ExecutionID, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusFailed, final.Status)
+	require.NotNil(t, final.ErrorMessage)
+	assert.Equal(t, "cancelled by operator", *final.ErrorMessage)
+}
+
+func TestExecutionHandler_Cancel_204_FromRunning(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	ctx := context.Background()
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(ctx, taskID, agentID, projectID)
+	require.NoError(t, err)
+	updated, err := svc.UpdateExecutionStatus(ctx, exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
+	require.NoError(t, err)
+	require.Equal(t, model.ExecutionStatusRunning, updated.Status)
+
+	w := doExecutionRequest(r, http.MethodDelete, "/v1/executions/"+exec.ExecutionID.String(), projectID, nil)
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	final, err := svc.GetExecution(ctx, exec.ExecutionID, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ExecutionStatusFailed, final.Status)
+}
+
+func TestExecutionHandler_Cancel_409_FromCompleted(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	_, projectID, exec := seedExecutionInReview(t, svc, s)
+	// Land it in COMPLETED first.
+	_, err := svc.ReviewExecution(context.Background(), exec.ExecutionID, true, "", projectID)
+	require.NoError(t, err)
+
+	w := doExecutionRequest(r, http.MethodDelete, "/v1/executions/"+exec.ExecutionID.String(), projectID, nil)
+	require.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "INVALID_STATE_TRANSITION")
+}
+
+func TestExecutionHandler_Cancel_CrossTenant_404(t *testing.T) {
+	r, svc, s := newExecutionTestRouter(t, uuid.NewString())
+	ctx := context.Background()
+	taskID, agentID, projectID := seedExecTaskAndAgent(t, s)
+	exec, err := svc.CreateExecution(ctx, taskID, agentID, projectID)
+	require.NoError(t, err)
+
+	w := doExecutionRequest(r, http.MethodDelete, "/v1/executions/"+exec.ExecutionID.String(), uuid.New(), nil)
 	require.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "CROSS_TENANT_BLOCKED")
 }

@@ -98,6 +98,8 @@ func New(svc *service.Services, cfg *config.Config, corsConfig middleware.CORSCo
 
 		v1.POST("/executions", writeRole, executions.Create)
 		v1.PATCH("/executions/:id", writeRole, executions.Patch)
+		// B-001 reviewer action: the only path into COMPLETED.
+		v1.PATCH("/executions/:id/review", writeRole, executions.Review)
 
 		v1.POST("/deliverables", writeRole, deliverables.Create)
 		v1.PUT("/deliverables/:id", writeRole, deliverables.Update)
@@ -116,6 +118,8 @@ func New(svc *service.Services, cfg *config.Config, corsConfig middleware.CORSCo
 		v1.DELETE("/projects/:id", adminRole, projects.Delete)
 		v1.DELETE("/agents/:id", adminRole, agents.Delete)
 		v1.DELETE("/tasks/:id", adminRole, tasks.Delete)
+		// B-001 operator cancel: only the operator can hard-cancel an execution.
+		v1.DELETE("/executions/:id", adminRole, executions.Cancel)
 		v1.POST("/users/register", adminRole, users.Register)
 
 		// --- Read = RequireAuth only (18 routes). No role check. ---
