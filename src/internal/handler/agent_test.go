@@ -398,7 +398,7 @@ func TestAgentHandler_Get_DataEnvelope(t *testing.T) {
 
 	m.On("GetAgent", mock.Anything, id, projectID).Return(&model.Agent{
 		ID: id, ProjectID: projectID, Name: "alpha", Role: "developer",
-		Status: model.AgentActive, Capabilities: []string{"coding"},
+		Status: model.AgentIdle, Capabilities: []string{"coding"},
 		Version: 1, CreatedAt: parseTime("2026-06-12T10:00:00Z"),
 		UpdatedAt: parseTime("2026-06-12T10:00:00Z"),
 	}, (*service.Error)(nil))
@@ -421,7 +421,7 @@ func TestAgentHandler_Update_DataEnvelope(t *testing.T) {
 
 	m.On("UpdateAgent", mock.Anything, id, projectID, mock.Anything).Return(&model.Agent{
 		ID: id, ProjectID: projectID, Name: "alpha", Role: "qa",
-		Status: model.AgentActive, Capabilities: []string{"testing"},
+		Status: model.AgentIdle, Capabilities: []string{"testing"},
 		Version: 2, CreatedAt: parseTime("2026-06-12T10:00:00Z"),
 		UpdatedAt: parseTime("2026-06-12T11:00:00Z"),
 	}, (*service.Error)(nil))
