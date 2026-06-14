@@ -158,9 +158,10 @@ func TestExecutionStateMachine_TableDriven(t *testing.T) {
 					r := tc.reason
 					msg = &r
 				}
-				after, gotErr = svc.UpdateExecutionStatus(ctx, exec.ExecutionID, tc.to, msg, projectID)
+				var updated *model.Execution
+				updated, gotErr = svc.UpdateExecutionStatus(ctx, exec.ExecutionID, tc.to, msg, projectID)
 				if gotErr == nil {
-					assert.Equal(t, tc.to, after.Status)
+					assert.Equal(t, tc.to, updated.Status)
 				}
 			}
 

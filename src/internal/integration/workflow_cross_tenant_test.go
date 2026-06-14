@@ -29,7 +29,7 @@ import (
 // agent + task, so each CT subtest can target a specific
 // cross-tenant hole.
 type crossTenantEnv struct {
-	router    *integrationRouter
+	router    *IntegrationTestEnv
 	projectA  string
 	projectB  string
 	agentA    uuid.UUID

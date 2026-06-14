@@ -50,7 +50,7 @@ type t1Step struct {
 // t1State is the running state across the T1 sequence.
 // Populated as steps run; consumed by later steps.
 type t1State struct {
-	env         *integrationRouter
+	env         *IntegrationTestEnv
 	projectID   string
 	agent       *model.Agent
 	task        *model.Task
