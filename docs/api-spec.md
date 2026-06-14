@@ -874,32 +874,155 @@ The following endpoints are wired, tested, and shipped as part of the Capability
 The validation seam (TASK-403) is exposed as part of `POST /v1/tasks/:taskId/assign` (see §Task Assignment) and surfaces the three `CAPABILITY_*` error codes documented above.
 
 ---
----
-## Task Assignment
+
+## The Assignment Engine (A-003)
+
+The **assignment engine** is the workflow that wires a task to an agent and records the action in an append-only history. It is implemented in A-003 and replaces the placeholder §Task Assignment section that previously lived between §Capabilities and §Executions.
+
+Conceptually there are **two tables**:
+
+  - `assignments` (migration 019) is the current-state projection: at most one row per task with `status = 'active'`. The `uq_assignments_one_active_per_task` partial unique index enforces this at the DB layer; a race between two concurrent POSTs surfaces as a unique-constraint violation that the service maps to 409.
+  - `assignment_events` (migration 020) is the append-only history. Every state change writes one row. Rows are linked back to the `assignments` row that caused them via `assignment_events.assignment_id → assignments.id`.
+
+The service writes to both inside a single transaction (`s.store.WithTx`) so the two are always consistent. `task.AssigneeID` is updated **outside** the transaction (it is its own table) — if that single-row update fails the assignment is already committed and a Sprint 5+ reconciliation job can backfill.
+
+### The Assignment Lifecycle (status enum)
+
+Four lifecycle values are persisted as TEXT with a CHECK constraint in migration 019:
+
+| Status       | When it is set                                                       | `completed_at` |
+|--------------|----------------------------------------------------------------------|----------------|
+| `active`     | The row represents the current "who is assigned right now".         | `NULL`         |
+| `superseded` | The row was active and has been replaced by a newer assignment.      | set to now     |
+| `completed`  | The row finished its lifecycle because the assigned task was completed (TASK-405 drives this transition). | set to now     |
+| `cancelled`  | The row was explicitly cancelled (e.g. an admin override or the Sprint 5+ `DELETE /v1/tasks/:id/assign` endpoint). | set to now     |
+
+`model.AllAssignmentStatuses()` mirrors this set; the service uses `model.IsValidAssignmentStatus` as defence in depth (the DB CHECK constraint is the canonical enforcement).
+
+### The Action Verbs (action enum)
+
+Three action verbs are persisted in `assignment_events.action` (migration 020) with a CHECK constraint:
+
+| Action     | When it is written                                                                |
+|------------|-----------------------------------------------------------------------------------|
+| `assign`   | First-time assignment. `task.AssigneeID` was unset before this event.             |
+| `reassign` | `task.AssigneeID` was set to a different agent before this event.                 |
+| `unassign` | `task.AssigneeID` was set before this event and is unset after. Reserved for the Sprint 5+ `DELETE /v1/tasks/:id/assign` endpoint; the enum is committed now so history rows from that endpoint do not need a schema migration. |
+
+`model.AllAssignmentActions()` mirrors this set; the service uses `model.IsValidAssignmentAction` for the same defence-in-depth reason.
 
 ### Assign Task to Agent
+
 ```
-POST /v1/tasks/:taskId/assign
+POST /v1/tasks/:id/assign
+X-Project-ID: <project UUID>          # REQUIRED, F-014 cross-tenant safety
 
 Request:
 {
-  "agent_id": "a1b2c3d4-..."
+  "agent_id":              "a1b2c3d4-...",     # required, UUID
+  "capabilities_required": ["coding", "testing"],  # optional; when non-empty it is persisted to task.RequiredCapabilities and used as the validation seam constraint set. When empty, the task's existing required_capabilities is preserved (not nulled).
+  "notes":                 "manual dispatch to backend owner"  # optional, free-text ≤ 1 KiB, audit-trail only
 }
 
 Response (200):
 {
-  "execution_id": "e5f6a7b8-...",
-  "task_id": "task-uuid-here",
-  "agent_id": "a1b2c3d4-...",
-  "status": "running",
-  "started_at": "2026-06-12T10:00:00Z"
+  "data": {
+    "task": { ... updated task with assignee_id set ... },
+    "event": {
+      "id":            "ev-uuid",
+      "assignment_id": "a-uuid",
+      "task_id":       "t-uuid",
+      "agent_id":      "ag-uuid",   # null for unassign events (Sprint 5+)
+      "assigned_by":   "u-uuid",    # null for system-initiated assignments
+      "assigned_at":   "2026-06-14T10:00:00Z",
+      "action":        "assign",    # one of: assign, reassign, unassign
+      "notes":         "..."
+    },
+    "assignment": {
+      "id":           "a-uuid",
+      "task_id":      "t-uuid",
+      "agent_id":     "ag-uuid",
+      "assigned_at":  "2026-06-14T10:00:00Z",
+      "completed_at": null,         # omitted when null
+      "status":       "active"      # one of: active, superseded, completed, cancelled
+    },
+    "idempotent": false              # true on re-POST of the same agent_id; no new event written
+  }
 }
 ```
 
-Validation:
-- Agent must be `idle`.
-- Agent capabilities must match task requirements.
-- Updates task status to `in_progress` and agent status to `working`.
+Errors:
+- `400 VALIDATION_ERROR` — bad UUID in path or body, missing `agent_id`, malformed JSON.
+- `400 MISSING_PROJECT_HEADER` — `X-Project-ID` header absent.
+- `404 NOT_FOUND` — task or agent does not exist.
+- `404 CROSS_TENANT_BLOCKED` (F-014) — `task.ProjectID != callerProjectID` OR `agent.ProjectID != callerProjectID` OR `task.ProjectID != agent.ProjectID`. The response is a 404 (not a 403) so the cross-tenant probe does not leak existence.
+- `409 CAPABILITY_MISMATCH` — the agent lacks at least one of the required capabilities (after the validation seam rejects, see §The Capability System (A-002)).
+- `409 Agent is not idle` — the agent is in `busy`, `paused`, `error`, or `retired` lifecycle state.
+- `409 Assignment race` — a concurrent POST beat this one to the partial unique index; the client may retry.
+- `500 INTERNAL` — store error during the transaction.
+
+### Idempotency
+
+Re-POSTing the same `agent_id` to the same task is a no-op: the service returns the existing state with `idempotent: true` and `event: null`. The `assignments` table is not mutated, the `assignment_events` table is not appended, and `task.UpdatedAt` is not bumped. This matches the F-017 brief and the api-spec.md §3.1 contract.
+
+The idempotency check happens after the cross-tenant and capability-validation guards, so a re-POST from the wrong project still returns `404 CROSS_TENANT_BLOCKED` (the safety checks run first).
+
+### List Assignment History
+
+```
+GET /v1/tasks/:id/history
+X-Project-ID: <project UUID>          # REQUIRED, F-014 cross-tenant safety
+
+Response (200):
+{
+  "data": [
+    {
+      "id":            "ev-uuid-1",   # newest first (ORDER BY assigned_at DESC)
+      "assignment_id": "a-uuid-1",
+      "task_id":       "t-uuid",
+      "agent_id":      "ag-uuid-1",
+      "assigned_by":   "u-uuid",
+      "assigned_at":   "2026-06-14T10:00:00Z",
+      "action":        "reassign",
+      "notes":         "..."
+    },
+    ...
+  ],
+  "meta": {
+    "count":       3,
+    "server_time": "2026-06-14T10:05:00Z"
+  }
+}
+```
+
+Errors:
+- `400 VALIDATION_ERROR` — bad UUID in path.
+- `400 MISSING_PROJECT_HEADER` — `X-Project-ID` header absent.
+- `404 NOT_FOUND` — task does not exist. The brief prefers 404 over an empty `data: []` so the UI can distinguish "no history yet" from "no such task".
+- `404 CROSS_TENANT_BLOCKED` (F-014) — `task.ProjectID != callerProjectID`.
+- `500 INTERNAL` — store error during the read.
+
+The response is **the full history in one call** — not paginated, no cursor, no offset. Assignment history per task is bounded (~10s of events in normal use), and the spec for A-003 does not introduce pagination for it. The `meta` envelope provides `count` and `server_time` so the client can render a footer without a second round-trip. If the count grows past a soft limit (TBD by Ops), a future Sprint can add a cursor without a wire break.
+
+### Cross-Tenant Safety (F-014)
+
+Both endpoints in this section require the `X-Project-ID` header. The service performs a triple-check before any state mutation:
+
+  1. `callerProjectID` (from header) must not be `uuid.Nil` — missing header returns `400 MISSING_PROJECT_HEADER`.
+  2. `task.ProjectID == callerProjectID` — otherwise `404 CROSS_TENANT_BLOCKED`.
+  3. `agent.ProjectID == callerProjectID` (for `POST /v1/tasks/:id/assign`) — otherwise `404 CROSS_TENANT_BLOCKED`.
+  4. `task.ProjectID == agent.ProjectID` (defensive) — otherwise `404 CROSS_TENANT_BLOCKED`.
+
+Per the F-014 brief, the rejection is a `404` (not a `403`) so a cross-tenant probe does not leak existence. The wire-level `404` carries the `CROSS_TENANT_BLOCKED` code in the body so a legitimate caller can distinguish it from a real `NOT_FOUND`.
+
+### Endpoints Implemented by A-003
+
+The following endpoints are wired, tested, and shipped as part of the Assignment Engine (A-003):
+
+- `POST /v1/tasks/:id/assign` — wire a task to an agent, append an event, return the new state.
+- `GET  /v1/tasks/:id/history` — read the append-only history for a task.
+
+The TASK-403 capability validation seam (see §The Capability System (A-002)) is exposed through `POST /v1/tasks/:id/assign` and surfaces the three `CAPABILITY_*` error codes (`CAPABILITY_NOT_IN_CATALOG`, `CAPABILITY_NOT_ASSIGNABLE`, `CAPABILITY_MISMATCH`).
 
 ---
 
