@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
-	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

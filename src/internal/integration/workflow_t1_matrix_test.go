@@ -331,7 +331,7 @@ func t1Matrix() []t1Step {
 		{
 			name:   "1.10_patch_running",
 			method: http.MethodPatch,
-			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ID.String() },
+			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ExecutionID.String() },
 			body: func(s *t1State) map[string]any {
 				return map[string]any{"status": "running"}
 			},
@@ -347,7 +347,7 @@ func t1Matrix() []t1Step {
 		{
 			name:   "1.10a_mock_to_review",
 			method: http.MethodGet,
-			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ID.String() },
+			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ExecutionID.String() },
 			body:   nil,
 			projectID:      func(s *t1State) string { return "" },
 			expectedStatus: http.StatusOK,
@@ -359,7 +359,7 @@ func t1Matrix() []t1Step {
 				require.NoError(t, json.Unmarshal(parseData(t, w), &exec))
 				require.Eventually(t, func() bool {
 					w2 := doRequest(t, s.env, http.MethodGet,
-						"/v1/executions/"+s.exec.ID.String(), "", nil)
+						"/v1/executions/"+s.exec.ExecutionID.String(), "", nil)
 					if w2.Code != http.StatusOK {
 						return false
 					}
@@ -376,7 +376,7 @@ func t1Matrix() []t1Step {
 		{
 			name:   "1.11_patch_completed",
 			method: http.MethodPatch,
-			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ID.String() },
+			path:   func(s *t1State) string { return "/v1/executions/" + s.exec.ExecutionID.String() },
 			body: func(s *t1State) map[string]any {
 				return map[string]any{"status": "completed"}
 			},
