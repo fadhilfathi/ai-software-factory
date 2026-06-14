@@ -263,7 +263,6 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 		v1.PATCH("/executions/:id/review", h.Review)
 		v1.DELETE("/executions/:id", h.Cancel)
 	}
-	r = r
 	s := st
 	taskA, agentA, projectA := seedExecTaskAndAgent(t, s)
 	taskB, agentB, _ := seedExecTaskAndAgent(t, s)
