@@ -115,11 +115,13 @@ func TestAuthMiddleware(t *testing.T) {
 		mockSvc := new(MockAuthService)
 		r := gin.New()
 		r.Use(Auth(mockSvc, publicPaths))
-		r.GET("/public", func(c *gin.Context) {
+		// /health is in the publicPaths set so the middleware
+		// should skip the auth checks and call the handler.
+		r.GET("/health", func(c *gin.Context) {
 			c.Status(http.StatusOK)
 		})
 
-		req := httptest.NewRequest("GET", "/public", nil)
+		req := httptest.NewRequest("GET", "/health", nil)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
@@ -206,7 +208,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 		result := &service.ValidateAPIKeyResult{UserID: uid, Role: "api"}
 
 		mockSvc := new(MockAuthService)
-		mockSvc.On("ValidateAPIKey", token).Return(result, nil)
+		mockSvc.On("ValidateAPIKey", mock.Anything, token).Return(result, nil)
 
 		r := gin.New()
 		r.Use(Auth(mockSvc, publicPaths))
@@ -233,7 +235,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 	t.Run("unknown_key", func(t *testing.T) {
 		const token = "ak_unknownsecret_999"
 		mockSvc := new(MockAuthService)
-		mockSvc.On("ValidateAPIKey", token).Return(nil, &service.Error{
+		mockSvc.On("ValidateAPIKey", mock.Anything, token).Return(nil, &service.Error{
 			Code:    "UNAUTHORIZED",
 			Message: "Invalid API key",
 		})
@@ -302,7 +304,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 		// trust decision to the auth service.
 		const token = "ak_tamperedsecret_xxx"
 		mockSvc := new(MockAuthService)
-		mockSvc.On("ValidateAPIKey", token).Return(nil, &service.Error{
+		mockSvc.On("ValidateAPIKey", mock.Anything, token).Return(nil, &service.Error{
 			Code:    "UNAUTHORIZED",
 			Message: "Invalid API key",
 		})
