@@ -120,7 +120,6 @@ jobs:
       - run: go vet ./...
         continue-on-error: true  # Sprint 4: docker v27.1.1+incompatible is incompatible with Go 1.25 (errors.As/Is undefined in transitively-imported docker code). Filed as TASK-426.
       - run: go test -v -count=1 -race -shuffle=on ./... 2>&1 | tee test-output.log
-        continue-on-error: true  # Sprint 4: same docker issue cascades into the test step (test imports docker). Filed as TASK-426.
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
