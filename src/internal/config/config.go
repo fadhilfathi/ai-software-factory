@@ -204,7 +204,7 @@ func parseCSV(s string) []string {
 	if s == "" {
 		return []string{}
 	}
-	var result []string
+	result := []string{}
 	for _, part := range splitCSV(s) {
 		if trimmed := trimSpace(part); trimmed != "" {
 			result = append(result, trimmed)
@@ -217,7 +217,7 @@ func splitCSV(s string) []string {
 	var result []string
 	var current string
 	for _, r := range s {
-		if r == ',' {
+		if r == ',' || r == '\n' || r == '\r' {
 			result = append(result, current)
 			current = ""
 		} else {
