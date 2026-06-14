@@ -1,23 +1,18 @@
 package service
 
-// A-002-19 TRACKING ----------------------------------------------------
+// A-002-19 TRACKING (resolved by A-003 commit 2) ---------------------
 //
-// The test signatures in this file lag the production code (Commit 2
-// fix(capability) closed a validation gap and bumped AssignableCapabilities
-// from 5 to 8 caps; the service constructor grew to 4 args; etc.).
+// The tracking comment in earlier revisions asserted the test
+// signatures lagged production (4-arg NewAssignmentService, 2-arg
+// NewAgentService) and required a rewrite. That analysis was wrong:
+// production is 3-arg NewAssignmentService(store, capSvc, log) and
+// 1-arg NewAgentService(store), which is exactly what the helpers
+// in this file (newAssignmentTestService, seedTaskAndAgent) call.
+// The file compiles as-is.
 //
-// This file needs a full rewrite to match:
-//   - service.NewAssignmentService(store, log, dispatcher, bus)   (4 args)
-//   - service.NewAgentService(store, log)                        (2 args)
-//   - service.NewCapabilityService(store, log)                   (2 args)
-//   - model.CreateAgentRequest{ProjectID, Name, Role, Capabilities}
-//
-// The rewrite is filed as A-002-19 and deferred. The expected behaviour
-// under test is correct; only the constructor / type-shape calls need
-// updating. Land A-002-19 before the next CI run on this file.
-//
-// -----------------------------------------------------------------------
-
+// A-003 commit 2 adds assignment_table_test.go as a parallel,
+// table-driven view of the same behaviour. The narrative cases
+// stay for readability.
 
 import (
 	"context"
