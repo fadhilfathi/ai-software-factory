@@ -112,7 +112,15 @@ func New(svc *service.Services, cfg *config.Config, corsConfig middleware.CORSCo
 		v1.POST("/deployments", writeRole, deployments.Trigger)
 		v1.POST("/deployments/:id/rollback", writeRole, deployments.Rollback)
 
-		v1.POST("/webhooks", writeRole, webhooks.Register)
+		// F-D002-005 (D-002 review §3.3): POST /v1/webhooks
+		// is admin-only. The previous `writeRole` let
+		// developers register webhooks, which combined with
+		// the X-Project-ID IDOR (F-D002-004) to let a
+		// developer in project A register a webhook in
+		// project B. Tightened to `adminRole` so only admins
+		// can register; the F-D002-004 fix (project_memberships)
+		// is the second leg.
+		v1.POST("/webhooks", adminRole, webhooks.Register)
 
 		// --- Admin-only (4 routes): DELETE + /v1/users/register. ---
 		v1.DELETE("/projects/:id", adminRole, projects.Delete)
