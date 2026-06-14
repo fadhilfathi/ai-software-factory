@@ -113,13 +113,27 @@ func newIntegrationRouter(t *testing.T, s store.Store) *IntegrationTestEnv {
 	v1.PUT("/deliverables/:id", delivs.Update)
 	v1.GET("/deliverables/:id/versions", delivs.ListVersions)
 
+	// Pre-create a real project so project-scoped handlers (task/agent/deliverable)
+	// can resolve X-Project-ID against an actual row. The previous setup used
+	// uuid.New().String() without a Create() call, which produced honest 404s
+	// from the project-not-found lookup in the task handler.
+	ownerUUID, _ := uuid.Parse("11111111-1111-1111-1111-111111111111")
+	projectID := uuid.New()
+	proj := &model.Project{
+		ID:      projectID,
+		Name:    "Test Project",
+		OwnerID: ownerUUID,
+		Status:  model.ProjectInProgress,
+	}
+	if err := s.Projects().Create(proj); err != nil {
+		t.Fatalf("setup: pre-create test project: %v", err)
+	}
 	return &IntegrationTestEnv{
 		Router:    r,
 		Store:     s,
 		UserID:    "11111111-1111-1111-1111-111111111111",
-		ProjectID: uuid.New().String(),
-	}
-}
+		ProjectID: projectID.String(),
+	}}
 
 // ----------------------------------------------------------------------------
 // Request / response helpers

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func newTaskTestRouter(t *testing.T, withUserID string) *gin.Engine {
+func newTaskTestRouter(t *testing.T, withUserID string) (*gin.Engine, uuid.UUID) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -46,7 +47,21 @@ func newTaskTestRouter(t *testing.T, withUserID string) *gin.Engine {
 	{
 		v1.POST("/projects/:id/tasks", h.Create)
 	}
-	return r
+	// Pre-create the project the test will use. The 404 cascade hit
+	// TestTaskHandler_Create_DataEnvelope because the test was using
+	// uuid.New() for projectID without ever creating the project row.
+	userUUID, _ := uuid.Parse(withUserID)
+	projectID := uuid.New()
+	proj := &model.Project{
+		ID:      projectID,
+		Name:    "Test Project",
+		OwnerID: userUUID,
+		Status:  model.ProjectInProgress,
+	}
+	if err := s.Projects().Create(proj); err != nil {
+		t.Fatalf("setup: pre-create test project: %v", err)
+	}
+	return r, projectID
 }
 
 func doTaskRequestAs(r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
@@ -66,8 +81,7 @@ func doTaskRequestAs(r *gin.Engine, method, path string, body any) *httptest.Res
 // ---- D7 envelope consistency (Sprint 6, TASK-427) ------------------
 
 func TestTaskHandler_Create_DataEnvelope(t *testing.T) {
-	r := newTaskTestRouter(t, "test-user-001")
-	projectID := uuid.New()
+	r, projectID := newTaskTestRouter(t, "test-user-001")
 
 	body := map[string]any{
 		"title":       "Envelope test task",

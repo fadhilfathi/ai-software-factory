@@ -42,7 +42,21 @@ func newCrossTenantEnv(t *testing.T) crossTenantEnv {
 	t.Helper()
 	r := newIntegrationRouter(t, store.NewMemoryStore())
 	projectA := r.ProjectID
-	projectB := uuid.New().String()
+	// Pre-create projectB in the same store so the cross-tenant attacker
+	// setup can create an agent + task under B. The earlier random uuid
+	// never hit s.Projects().Create() and 404'd on every handler call.
+	projectBUUID := uuid.New()
+	ownerUUID, _ := uuid.Parse("11111111-1111-1111-1111-111111111111")
+	projB := &model.Project{
+		ID:      projectBUUID,
+		Name:    "Test Project B",
+		OwnerID: ownerUUID,
+		Status:  model.ProjectInProgress,
+	}
+	if err := r.Store.Projects().Create(projB); err != nil {
+		t.Fatalf("setup: pre-create projectB: %v", err)
+	}
+	projectB := projectBUUID.String()
 
 	// Create victim agent in A.
 	w := doRequest(t, r, http.MethodPost, "/v1/agents", projectA,
