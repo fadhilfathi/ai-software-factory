@@ -680,6 +680,201 @@ the capability-set read path) and A-003 Assignment Engine (events/conflicts)
 in Sprint 7.
 
 ---
+
+## The Capability System (A-002)
+
+The **capability system** is the canonical registry of skills an Agent can declare, the seam that matches tasks to agents by those skills, and the default skill profile each role ships with. It is implemented in A-002 and replaces the scattered capability references that previously lived inside the §Agents section.
+
+The catalog is **global** (not per-project): the same nine capability names are valid in every project so the UI can render consistent filters and the assignment engine can match deterministically.
+
+### The Capability Catalog
+
+The catalog is a fixed set of nine names seeded at boot by migration `016_seed_capability_catalog`. Operators can extend the catalog via `POST /v1/capabilities` (admin-only; deferred to Sprint 7 — see below).
+
+| Name                  | Display Name         | Purpose                                                                        |
+|-----------------------|----------------------|--------------------------------------------------------------------------------|
+| `architecture`        | Architecture         | Produces system design, ADRs, dependency choices.                              |
+| `coding`              | Coding               | Writes source code and the tests that live in the source tree.                 |
+| `testing`             | Testing              | Runs the test suite, reports coverage, files bug reports.                      |
+| `security`            | Security             | Threat modeling, code audit, secret scanning.                                  |
+| `devops`              | DevOps               | Builds, deploys, infra-as-code, monitoring.                                    |
+| `documentation`       | Documentation        | Writes user-facing docs, READMEs, API references, runbooks.                    |
+| `project_management`  | Project Management   | Plans, decomposes work, manages dependencies, tracks progress.                 |
+| `data_engineering`    | Data Engineering     | Designs schemas, builds data pipelines, analytics.                             |
+| `leadership`          | Leader               | **Reserved.** Owns the assignment workflow; never appears on a task constraint.|
+
+### Assignable vs Reserved
+
+Eight of the nine catalog capabilities are **assignable** — they may appear in a task's `required_capabilities` list and the validation seam will match agents against them. `leadership` is the one exception: it is reserved for the Lead agent role and is rejected by the validation seam with `CAPABILITY_NOT_ASSIGNABLE` if it appears on a task.
+
+```go
+// model/capability.go
+func AssignableCapabilities() []Capability {
+    return []Capability{
+        CapArchitecture, CapCoding, CapTesting, CapSecurity, CapDevOps,
+        CapDocumentation, CapProjectMgmt, CapDataEngineering,
+    }
+}
+```
+
+### List Catalog
+
+```
+GET /v1/capabilities
+
+Response (200):
+{
+  "data": [
+    {
+      "name":         "architecture",
+      "display_name": "Architecture",
+      "category":     "architecture",
+      "description":  "Produces system design, ADRs, dependency choices."
+    },
+    {
+      "name":         "leadership",
+      "display_name": "Leader",
+      "category":     "leadership",
+      "description":  "Reserved. Owns the assignment workflow.",
+      "reserved":     true
+    },
+    ...
+  ]
+}
+
+Errors:
+- 401 UNAUTHENTICATED — missing or invalid bearer token.
+```
+
+The response is the canonical row view (`model.AgentCapabilityView`). The optional `reserved` flag is `true` only for `leadership`; the other eight omit it. The list is sorted by `name` ascending and is not paginated (catalog size is bounded to the seed set plus any custom capabilities added at runtime).
+
+### List Agent Capabilities
+
+```
+GET /v1/agents/:id/capabilities
+
+Response (200):
+{
+  "data": {
+    "agent_id":     "a1b2c3d4-...",
+    "agent_type":   "developer",
+    "role":         "Backend Developer",
+    "capabilities": [
+      "coding", "testing", "documentation"
+    ],
+    "is_assignable": true
+  }
+}
+
+Errors:
+- 401 UNAUTHENTICATED
+- 403 CROSS_TENANT_BLOCKED — :id belongs to a different project.
+- 404 AGENT_NOT_FOUND
+```
+
+The `:id` path parameter is the agent UUID. The response includes `is_assignable: false` only if the agent is the Leader (so callers can render a banner saying " this agent cannot be assigned a task" without checking the role string client-side). For full agent CRUD see the §Agents section; this endpoint is a thin read-only slice.
+
+### The Validation Seam (TASK-403)
+
+When a client submits a task assignment that includes a `required_capabilities` list (via `POST /v1/tasks/:taskId/assign` — see §Task Assignment), the service layer validates the list against the catalog and the assignable set before attempting to match an agent.
+
+```
+Rejection responses (409 Conflict):
+
+  required_capabilities contains a name that is not in the catalog at all:
+  {
+    "error": "CAPABILITY_NOT_IN_CATALOG",
+    "message": "Capability 'rocket-science' is not in the capability catalog.",
+    "details": { "unknown_capability": "rocket-science" }
+  }
+
+  required_capabilities contains 'leadership':
+  {
+    "error": "CAPABILITY_NOT_ASSIGNABLE",
+    "message": "Capability 'leadership' is reserved and may not appear on a task.",
+    "details": { "reserved_capability": "leadership" }
+  }
+
+  No agent in the project has all the required capabilities:
+  {
+    "error": "CAPABILITY_MISMATCH",
+    "message": "No agent in this project has all required capabilities.",
+    "details": {
+      "required_capabilities": ["data_engineering", "coding"],
+      "candidates": [
+        { "agent_id": "...", "missing": ["data_engineering"] }
+      ]
+    }
+  }
+```
+
+The seam lives in `service.NewAssignmentService().validateCapabilities()`. The three error codes are mapped to `409 Conflict` because the request was syntactically valid but cannot be satisfied with the current project roster — the client may resolve the conflict by adjusting the task, adding an agent, or splitting the work.
+
+### Role × Default Capabilities
+
+When an agent is created without an explicit `capabilities` list, the service seeds it from the `role` string using this table (`model.DefaultCapabilitiesForRole`):
+
+| Role             | Default capabilities                          |
+|------------------|-----------------------------------------------|
+| `pm`             | `project_management`                          |
+| `developer`      | `coding`, `testing`                           |
+| `architect`      | `architecture`, `coding`                      |
+| `reviewer`       | `testing`, `security`                         |
+| `qa`             | `testing`                                     |
+| `security`       | `security`                                    |
+| `devops`         | `devops`, `architecture`                      |
+| `techwriter`     | `documentation`                               |
+| `data_engineer`  | `data_engineering`, `coding`                  |
+| `leader`         | `leadership`                                  |
+
+Unknown roles yield an empty default list; the caller is then required to supply `capabilities` explicitly or the create call fails with `400 MISSING_FIELD`.
+
+### Agent Type × Default Capabilities (internal)
+
+In addition to the user-facing role-to-caps map above, the model exposes a parallel `agent_type`-keyed map (`model.DefaultCapabilitiesForType`) used by routing and reporting rather than by the validation seam. The names in this map are the original 12-cap Sprint 4 design set, kept as full capability constants so the canonical capability set is self-describing for tests, documentation, and downstream reporting:
+
+| Agent Type   | Default capabilities                                         |
+|--------------|--------------------------------------------------------------|
+| `pm`         | `requirement_analysis`, `task_decomposition`                 |
+| `arch`       | `system_design`, `api_design`                                |
+| `dev`        | `code_implementation`                                        |
+| `reviewer`   | `code_review`, `security_scan`                               |
+| `qa`         | `test_planning`, `test_execution`                            |
+| `devops`     | `ci_cd`, `deployment`, `infrastructure`                      |
+
+The two maps are deliberately separate: `RoleCapabilities` is keyed by the free-form `role` string on the agent struct (used for seeding on create); `AgentTypeCapabilities` is keyed by the closed `AgentType` enum (used by routing and the monitoring dashboard). They never overlap by name — the user-facing nine and the agent-type twelve live in disjoint namespaces.
+
+### Custom Capabilities (Sprint 7, Deferred)
+
+Custom capability creation is the only catalog mutation surface and is **deferred to Sprint 7**:
+
+```
+POST /v1/capabilities       (admin-only)
+
+Request:
+{
+  "name":         "mobile-ios",
+  "display_name": "Mobile (iOS)",
+  "category":     "coding",
+  "description":  "Swift / SwiftUI / UIKit. Default to coding category."
+}
+
+Response (201): { same shape as catalog list rows }
+```
+
+Reserved names: `__system__*` (double-underscore system prefix) and any of the nine seed names. The validation seam and the role/type default maps will pick up the new name on the next request without a restart because both `ValidCapability` and `AssignableCapabilities` read from the catalog at request time.
+
+### Endpoints Implemented by A-002
+
+The following endpoints are wired, tested, and shipped as part of the Capability System (A-002):
+
+- `GET  /v1/capabilities` — list the full capability catalog (this section).
+- `GET  /v1/agents/:id/capabilities` — list capabilities declared by a single agent (this section; also referenced from §Agents for discoverability).
+
+The validation seam (TASK-403) is exposed as part of `POST /v1/tasks/:taskId/assign` (see §Task Assignment) and surfaces the three `CAPABILITY_*` error codes documented above.
+
+---
+---
 ## Task Assignment
 
 ### Assign Task to Agent
