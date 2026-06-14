@@ -98,7 +98,7 @@ func waitForStatus(t *testing.T, svc *ExecutionService, id, projectID uuid.UUID,
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	e, _ := svc.GetExecution(context.Background(), id)
+	e, _ := svc.GetExecution(context.Background(), id, projectID)
 	t.Fatalf("execution %s did not reach any of %v within deadline; last seen status=%v", id, targets, e)
 	return nil
 }
@@ -247,7 +247,7 @@ func TestListExecutions_FilterByTaskAgentStatus(t *testing.T) {
 	// land in the same project (and the original filter counts
 	// hold). Cross-project semantics are covered below.
 	require.NoError(t, s.Tasks().Update(&model.Task{ID: taskB, ProjectID: projectA, Title: "relinked", Status: model.TaskOpen, Priority: model.PriorityNormal, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
-	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentActive, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
+	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentIdle, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
 
 	// 3 on (taskA, agentA), 2 on (taskA, agentB), 1 on (taskB, agentA).
 	for i := 0; i < 3; i++ {
