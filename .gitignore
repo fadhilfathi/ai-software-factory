@@ -12,7 +12,6 @@ src/vendor/
 *.so
 *.dylib
 *.test
-*.out
 src/tmp/
 
 # --- Environment ---
@@ -70,6 +69,13 @@ tmp_*.log
 tmp*.ps1
 scratch/
 dispatch.txt
+
+# --- Local dev tools (binaries installed by tools/install-*.sh) ---
+tools/gitleaks
+tools/gitleaks.exe
+tools/gitleaks.zip
+tools/*.exe
+tools/*.zip
 
 # --- Defence-in-depth: secrets ---
 *.pem
