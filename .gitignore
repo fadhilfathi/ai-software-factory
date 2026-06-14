@@ -57,3 +57,24 @@ __pycache__/
 # --- Logs ---
 *.log
 logs/
+
+# --- Ops scratch (Sprint 5 cleanup, 2026-06-14) ---
+out/
+out*.txt
+push_output*.txt
+ls.txt
+new_*.txt
+tmp_*.txt
+tmp_*.out
+tmp_*.log
+tmp*.ps1
+scratch/
+dispatch.txt
+
+# --- Defence-in-depth: secrets ---
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.secrets/
