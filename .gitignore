@@ -84,3 +84,8 @@ tools/*.zip
 *.pfx
 secrets/
 .secrets/
+
+# --- Sprint 5 lead-updates (Sprint 6+ agents commit lead-updates
+#     via the E-003 ops-commit pipeline; these were left in working
+#     tree untracked at end of Sprint 5) ---
+docs/sprint5/lead-updates/2026-06-14-*.md
