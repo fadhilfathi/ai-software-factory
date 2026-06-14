@@ -238,8 +238,8 @@ func TestIntegration_Workflow_T1_HappyPath(t *testing.T) {
 			"1.9 create execution: %s", w.Body.String())
 		var exec model.Execution
 		require.NoError(t, json.Unmarshal(parseData(t, w), &exec))
-		execID = exec.ID
-		require.NotEqual(t, uuid.Nil, execID, "execution.ID must be set")
+		execID = exec.ExecutionID
+		require.NotEqual(t, uuid.Nil, execID, "execution.ExecutionID must be set")
 		// B-001 6-state lifecycle: initial state after create is "assigned".
 		assert.Equal(t, model.ExecutionStatusAssigned, exec.Status,
 			"initial execution status must be 'assigned' per B-001 lifecycle")
