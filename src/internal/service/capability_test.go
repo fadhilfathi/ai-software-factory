@@ -209,31 +209,40 @@ func TestAllCapabilities_ContainsAll(t *testing.T) {
 }
 
 func TestAssignableCapabilities_ExcludesLeadership(t *testing.T) {
-	// Per the TASK-403 brief, the 5 assignable caps are the
+	// Per the TASK-403 brief, the 8 assignable caps are the
 	// public assignable surface for task-assignment constraints.
 	// Leadership is in the catalog (migration 016 seed) but
 	// reserved for the Leader and must never appear in a task's
-	// required_capabilities list.
+	// required_capabilities list. The other 3 non-engineering caps
+	// (documentation, project_management, data_engineering) are
+	// now also assignable: GetRequiredCapabilities() maps task types
+	// like "documentation" and "data_pipeline" to them, so they must
+	// pass the validation seam.
 	caps := model.AssignableCapabilities()
 	assert.ElementsMatch(t, []model.Capability{
 		model.CapArchitecture, model.CapCoding, model.CapTesting,
 		model.CapSecurity, model.CapDevOps,
+		model.CapDocumentation, model.CapProjectMgmt, model.CapDataEngineering,
 	}, caps)
 	for _, c := range caps {
 		assert.NotEqual(t, model.CapLeadership, c, "leadership must not be in the assignable set")
 	}
+	assert.Len(t, caps, 8, "exactly 8 caps in the assignable set; leadership is the 1 reserved cap")
 }
 
 func TestIsAssignableCapability(t *testing.T) {
+	// 8 assignable (the public task-constraint surface).
 	assert.True(t, model.IsAssignableCapability("coding"))
 	assert.True(t, model.IsAssignableCapability("testing"))
 	assert.True(t, model.IsAssignableCapability("architecture"))
 	assert.True(t, model.IsAssignableCapability("security"))
 	assert.True(t, model.IsAssignableCapability("devops"))
+	assert.True(t, model.IsAssignableCapability("documentation"))
+	assert.True(t, model.IsAssignableCapability("project_management"))
+	assert.True(t, model.IsAssignableCapability("data_engineering"))
+	// 1 reserved (leadership is in the catalog but not assignable).
 	assert.False(t, model.IsAssignableCapability("leadership"))
-	assert.False(t, model.IsAssignableCapability("documentation"))
-	assert.False(t, model.IsAssignableCapability("project_management"))
-	assert.False(t, model.IsAssignableCapability("data_engineering"))
+	// Unknown and empty are not assignable.
 	assert.False(t, model.IsAssignableCapability("unknown"))
 	assert.False(t, model.IsAssignableCapability(""))
 }

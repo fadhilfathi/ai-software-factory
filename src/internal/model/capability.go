@@ -14,9 +14,10 @@ const (
 	CapDataEngineering Capability = "data_engineering"
 	// CapLeadership is reserved for the Leader agent and is part of the
 	// catalog (seeded in migration 016) but is NOT in the assignable set.
-	// Per Analyst-01's design (Sprint 4 design docs), only the 5
-	// assignable capabilities (architecture, coding, testing, security,
-	// devops) can be used as task-assignment constraints.
+	// It is the single excluded capability: of the 9 catalog capabilities,
+	// 8 are assignable (architecture, coding, testing, security, devops,
+	// documentation, project_management, data_engineering); only leadership
+	// is reserved. See the comment on AssignableCapabilities() below.
 	CapLeadership Capability = "leadership"
 
 	// Agent-type default capabilities. Used by AgentTypeCapabilities to
@@ -27,7 +28,7 @@ const (
 	// capability set is still self-describing for tests, documentation,
 	// and downstream reporting. None of these appear in AssignableCapabilities()
 	// above because task-assignment constraints are still restricted to the
-	// 5 assignable ones (see comment on CapLeadership).
+	// 8 assignable ones (see comment on CapLeadership).
 	CapRequirementAnalysis Capability = "requirement_analysis"
 	CapTaskDecomposition   Capability = "task_decomposition"
 	CapSystemDesign        Capability = "system_design"
@@ -68,10 +69,25 @@ func ValidCapability(cap string) bool {
 }
 
 // AssignableCapabilities returns the subset of capabilities that may be used
-// as task-assignment constraints. Leadership is intentionally excluded — it
-// is reserved for the Leader and never appears in a task's
-// required_capabilities list. See Analyst-01's design (Sprint 4 design
-// docs, §3) and the TASK-403 brief.
+// as task-assignment constraints. Eight of the nine catalog capabilities
+// are assignable: leadership is the one exception — it is reserved for
+// the Leader agent role and rejected by the validation seam with
+// CAPABILITY_NOT_ASSIGNABLE if it appears on a task. The seam
+// (service.NewAssignmentService.validateCapabilities, TASK-403) is the
+// authoritative check; this helper is the closed set the seam consults.
+//
+// The four non-engineering caps (documentation, project_management,
+// data_engineering, leadership) were all in the catalog from the start
+// (model.AllCapabilities seeds 9), but the original "5 assignable" set
+// was too narrow: GetRequiredCapabilities() in the service layer maps
+// task types like "documentation", "project_management", and
+// "data_pipeline" to these caps, so a task whose required_capabilities
+// contained e.g. "documentation" would be rejected by IsAssignableCapability
+// before the matching layer could even see it. They are now part of the
+// assignable set; leadership stays reserved.
+//
+// See the Capability System (A-002) section in api-spec.md and the
+// TASK-403 brief.
 func AssignableCapabilities() []Capability {
 	return []Capability{
 		CapArchitecture,
@@ -79,6 +95,9 @@ func AssignableCapabilities() []Capability {
 		CapTesting,
 		CapSecurity,
 		CapDevOps,
+		CapDocumentation,
+		CapProjectMgmt,
+		CapDataEngineering,
 	}
 }
 
