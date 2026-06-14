@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/router"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
@@ -87,7 +88,7 @@ func buildRouter(t *testing.T, auth *fakeAuthService) *gin.Engine {
 		Execution: service.NewExecutionService(st, log, nil, aion.NewMockRuntime()),
 	}
 
-	r := router.New(svc, middleware.CORSConfig{}, middleware.RateLimitConfig{
+	r := router.New(svc, &config.Config{}, middleware.CORSConfig{}, middleware.RateLimitConfig{
 		RequestsPerMinute: 10000,
 		Burst:             10000,
 	})

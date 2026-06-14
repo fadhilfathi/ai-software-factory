@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
+	"github.com/fadhilfathi/AI-Software-Factory/internal/config"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/middleware"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/router"
@@ -58,7 +59,7 @@ func buildRouterWithWebhook(t *testing.T, auth *fakeAuthService) *gin.Engine {
 		Webhook:   service.NewWebhookService(st, log),
 	}
 
-	return router.New(svc, middleware.CORSConfig{}, middleware.RateLimitConfig{
+	return router.New(svc, &config.Config{}, middleware.CORSConfig{}, middleware.RateLimitConfig{
 		RequestsPerMinute: 10000,
 		Burst:             10000,
 	})
