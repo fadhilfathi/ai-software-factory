@@ -276,7 +276,7 @@ func TestAgentLifecycle_CreateAssignExecuteDeliver_Smoke(t *testing.T) {
 	// the agent. The assignment service should match by capability
 	// (the agent has "coding", the request requires "coding").
 	w = doRequest(t, env, http.MethodPost,
-		"/v1/tasks/"+taskID+"/assign", "",
+		"/v1/tasks/"+taskID+"/assign", env.ProjectID,
 		map[string]any{
 			"agent_id":              agentID,
 			"capabilities_required": []string{"coding"},

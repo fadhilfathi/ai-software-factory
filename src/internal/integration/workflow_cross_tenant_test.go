@@ -99,7 +99,7 @@ func newCrossTenantEnv(t *testing.T) crossTenantEnv {
 	// Assign the victim task to the victim agent (legit flow
 	// within project A). Capture the assignment ID for CT3.
 	w = doRequest(t, r, http.MethodPost,
-		"/v1/tasks/"+taskA.ID.String()+"/assign", "",
+		"/v1/tasks/"+taskA.ID.String()+"/assign", projectA,
 		map[string]any{
 			"agent_id":              agentA.ID.String(),
 			"capabilities_required": []string{"coding"},

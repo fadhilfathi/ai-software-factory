@@ -440,7 +440,7 @@ func t1Matrix() []t1Step {
 					"content": "Updated deliverable content for T1 matrix.",
 				}
 			},
-			projectID:      func(s *t1State) string { return "" },
+			projectID:      func(s *t1State) string { return s.projectID },
 			expectedStatus: http.StatusOK,
 			validate: func(t *testing.T, w *httptest.ResponseRecorder, s *t1State) {
 				var deliv struct {
@@ -458,7 +458,7 @@ func t1Matrix() []t1Step {
 			method: http.MethodGet,
 			path:   func(s *t1State) string { return "/v1/deliverables/" + s.deliverable.ID.String() + "/versions" },
 			body:   nil,
-			projectID:      func(s *t1State) string { return "" },
+			projectID:      func(s *t1State) string { return s.projectID },
 			expectedStatus: http.StatusOK,
 			validate: func(t *testing.T, w *httptest.ResponseRecorder, s *t1State) {
 				var versions []model.DeliverableVersion
