@@ -28,6 +28,14 @@ type ExecutionService interface {
 	GetExecution(ctx context.Context, id, callerProjectID uuid.UUID) (*model.Execution, error)
 	ListExecutions(ctx context.Context, filter model.ExecutionFilter, callerProjectID uuid.UUID) (*model.ExecutionListResult, error)
 	UpdateExecutionStatus(ctx context.Context, id uuid.UUID, newStatus model.ExecutionStatus, errorMessage *string, callerProjectID uuid.UUID) (*model.Execution, error)
+
+	// B-001 reviewer action: lands an execution in COMPLETED (accepted=true)
+	// or FAILED (accepted=false, reason required). Requires status=review.
+	ReviewExecution(ctx context.Context, id uuid.UUID, accepted bool, reason string, projectID uuid.UUID) (*service.ReviewAction, error)
+
+	// B-001 operator cancel: transitions a non-terminal execution to
+	// FAILED with error_message='cancelled by operator'.
+	CancelExecution(ctx context.Context, id uuid.UUID, projectID uuid.UUID) error
 }
 
 // ExecutionHandler is the Sprint 4 (TASK-405) HTTP layer for
@@ -68,6 +76,16 @@ type createExecutionReq struct {
 type patchExecutionReq struct {
 	Status       *string `json:"status,omitempty"`
 	ErrorMessage *string `json:"error_message,omitempty"`
+}
+
+// reviewExecutionReq is the body for PATCH /v1/executions/:id/review.
+//   - Accepted is the reviewer verdict: true lands the execution in
+//     COMPLETED, false lands it in FAILED.
+//   - Reason is the rejection reason (required when accepted=false,
+//     silently ignored when accepted=true). Free-text, max 1 KiB.
+type reviewExecutionReq struct {
+	Accepted *bool  `json:"accepted"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // ----------------------------------------------------------------------------
@@ -333,4 +351,106 @@ func (h *ExecutionHandler) mapError(c *gin.Context, err error, op string) {
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"error": gin.H{"code": "INTERNAL", "message": "internal server error"},
 	})
+}
+// ----------------------------------------------------------------------------
+// PATCH /v1/executions/:id/review (B-001 reviewer action)
+// ----------------------------------------------------------------------------
+
+// reviewExecutionResponse is the success response shape for
+// PATCH /v1/executions/:id/review. The api-spec §The Execution Engine
+// B-001 spec asks for { data: { id, from, to, at } }.
+type reviewExecutionResponse struct {
+	Data *service.ReviewAction `json:"data"`
+}
+
+// Review handles PATCH /v1/executions/:id/review (B-001).
+//
+// Wire-level contract:
+//   - 200 on success: body { data: { id, from: 'review', to: 'completed'|'failed', at } }
+//   - 400 on bad UUID, missing/non-boolean `accepted`, missing reason when accepted=false, reason > 1 KiB
+//   - 404 EXECUTION_NOT_FOUND if the execution doesn't exist
+//   - 404 CROSS_TENANT_BLOCKED if the caller's project doesn't own the execution (F-014)
+//   - 409 INVALID_STATE_TRANSITION if the execution is not in 'review'
+//   - 500 on store error
+//
+// The reviewer is the ONLY path into COMPLETED. This is the user-facing
+// endpoint that pairs with the runtime's driveWorker handoff (which lands
+// in REVIEW). See docs/reset/audit-prep-B-001.md.
+func (h *ExecutionHandler) Review(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Execution ID")
+		return
+	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
+		return
+	}
+	var req reviewExecutionReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_JSON", "Malformed request body")
+		return
+	}
+	if req.Accepted == nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "accepted is required")
+		return
+	}
+	if !*req.Accepted && req.Reason == "" {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "reason is required when accepted=false")
+		return
+	}
+	// Reason length cap (parallel to the assignment-notes cap from A-003).
+	// 1 KiB keeps the audit trail compact.
+	if len(req.Reason) > int(model.MaxAssignmentNotesBytes) {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "reason exceeds 1 KiB (1024 bytes)")
+		return
+	}
+	action, svcErr := h.svc.ReviewExecution(
+		c.Request.Context(),
+		id,
+		*req.Accepted,
+		req.Reason,
+		callerProjectID,
+	)
+	if svcErr != nil {
+		h.mapError(c, svcErr)
+		return
+	}
+	c.JSON(http.StatusOK, reviewExecutionResponse{Data: action})
+}
+
+// ----------------------------------------------------------------------------
+// DELETE /v1/executions/:id (B-001 operator cancel)
+// ----------------------------------------------------------------------------
+
+// Cancel handles DELETE /v1/executions/:id (B-001 operator cancel).
+//
+// Wire-level contract:
+//   - 204 No Content on success
+//   - 400 on bad UUID
+//   - 404 EXECUTION_NOT_FOUND if the execution doesn't exist
+//   - 404 CROSS_TENANT_BLOCKED if the caller's project doesn't own the execution (F-014)
+//   - 409 INVALID_STATE_TRANSITION if the execution is already in a terminal state
+//   - 500 on store error
+//
+// The router enforces admin/operator-role on this route (see
+// internal/router/router.go), so the cross-tenant check in the
+// service is the last line of defense, not the first.
+func (h *ExecutionHandler) Cancel(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid Execution ID")
+		return
+	}
+	callerProjectID, ok := projectIDFromContext(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "MISSING_PROJECT_HEADER", "X-Project-ID header is required for this request")
+		return
+	}
+	if svcErr := h.svc.CancelExecution(c.Request.Context(), id, callerProjectID); svcErr != nil {
+		h.mapError(c, svcErr)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

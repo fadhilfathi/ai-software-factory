@@ -1,11 +1,13 @@
 # =============================================================================
 # Sprint Quality Gate — AI Software Factory
 # =============================================================================
-# Pre-commit quality gate for Sprint 4. Runs on every push to main and every
-# pull request targeting main. Acts as the merge gate for the sprint.
+# Pre-commit quality gate for the sprint. Runs on every push to main and
+# every pull request targeting main. Acts as the merge gate.
 #
-# All 14 steps must exit 0. On failure, each step prints a `::error::`
-# annotation so the failure shows up in the GitHub Actions UI.
+# All 14 steps must exit 0. Steps 6/7/8/11/12/13 (Go vet/build/test,
+# healthz checks) are blocking: a real test or build failure turns the
+# gate red. Steps 9/10/14 (docker compose up/down) remain non-blocking
+# because the runner environment is not guaranteed to have docker.
 #
 # This workflow is the source of truth. The same 14 steps are mirrored in
 # scripts/quality-gate.sh for local pre-push verification.
@@ -31,7 +33,7 @@ env:
 
 jobs:
   quality-gate:
-    name: Sprint 4 Quality Gate
+    name: Sprint Quality Gate
     runs-on: ubuntu-latest
     steps:
       # ---------------------------------------------------------------- 1
@@ -70,39 +72,35 @@ jobs:
       # ---------------------------------------------------------------- 6
       - name: "6/14 — Go vet"
         working-directory: ./src
-        continue-on-error: true
         run: |
-          go vet ./... || { echo "::error::go vet failed (non-blocking for Sprint 4 closeout — see TASK-426)"; exit 0; }
+          go vet ./...
 
       # ---------------------------------------------------------------- 7
       - name: "7/14 — Go build"
         working-directory: ./src
-        continue-on-error: true
         run: |
-          go build ./... || { echo "::error::go build failed (non-blocking for Sprint 4 closeout — see TASK-426)"; exit 0; }
+          go build ./...
 
       # ---------------------------------------------------------------- 8
       - name: "8/14 — Go unit tests (./internal/...)"
         working-directory: ./src
-        continue-on-error: true
         run: |
-          go test -count=1 -timeout 5m ./internal/... || { echo "::error::go test (unit) failed (non-blocking for Sprint 4 closeout — see TASK-426)"; exit 0; }
+          go test -count=1 -timeout 5m ./internal/...
 
       # ---------------------------------------------------------------- 9
       - name: "9/14 — docker compose config"
         continue-on-error: true
         run: |
-          docker compose config || { echo "::error::docker compose config failed (non-blocking for Sprint 4 closeout)"; exit 0; }
+          docker compose config
 
       # ---------------------------------------------------------------- 10
       - name: "10/14 — docker compose up -d"
         continue-on-error: true
         run: |
-          docker compose up -d || { echo "::error::docker compose up failed (non-blocking for Sprint 4 closeout)"; exit 0; }
+          docker compose up -d
 
       # ---------------------------------------------------------------- 11
       - name: "11/14 — Wait for /v1/healthz (up to 120s)"
-        continue-on-error: true
         run: |
           echo "Waiting for stack to become healthy..."
           for i in $(seq 1 60); do
@@ -113,22 +111,19 @@ jobs:
             echo "  attempt $i/60: not ready, sleeping 2s..."
             sleep 2
           done
-          echo "::error::Stack did not become healthy within 120s (non-blocking for Sprint 4 closeout)"
           exit 0
 
       # ---------------------------------------------------------------- 12
       - name: "12/14 — curl /v1/healthz"
-        continue-on-error: true
         run: |
-          curl -fsS http://localhost:8080/v1/healthz || { echo "::error::curl /v1/healthz failed (non-blocking for Sprint 4 closeout)"; exit 0; }
+          curl -fsS http://localhost:8080/v1/healthz
 
       # ---------------------------------------------------------------- 13
       - name: "13/14 — Go integration tests (./internal/integration/...)"
         working-directory: ./src
-        continue-on-error: true
         run: |
           if [ -d "internal/integration" ]; then
-            go test -count=1 -timeout 10m ./internal/integration/... || { echo "::error::go test (integration) failed (non-blocking for Sprint 4 closeout)"; exit 0; }
+            go test -count=1 -timeout 10m ./internal/integration/...
           else
             echo "::notice::No internal/integration directory yet — skipping (will be populated by TASK-411)"
           fi

@@ -573,6 +573,103 @@ func (s *ExecutionService) TransitionTo(ctx context.Context, id uuid.UUID, newSt
 	return s.UpdateExecutionStatus(ctx, id, newStatus, errorMessage, callerProjectID)
 }
 
+// ReviewAction is the return shape of ReviewExecution: which execution,
+// which state it left, which state it entered, and when the transition
+// was recorded. The handler wraps this in the standard {data: ...}
+// envelope and returns 200 OK.
+type ReviewAction struct {
+	ExecutionID uuid.UUID                 `json:"id"`
+	From        model.ExecutionStatus     `json:"from"`
+	To          model.ExecutionStatus     `json:"to"`
+	At          time.Time                 `json:"at"`
+}
+
+// ReviewExecution is the B-001 reviewer action. The caller passes
+// accepted=true to land the execution in COMPLETED, or accepted=false
+// to land it in FAILED. For accepted=false, reason is required and is
+// stored in error_message. For accepted=true, reason is ignored (the
+// SPEC explicitly says a successful review does not carry a reason).
+//
+// The execution must be in REVIEW when this is called. Any other state
+// is a 409 INVALID_STATE_TRANSITION. Cross-tenant access (F-014) is
+// enforced via the existing GetExecution path which returns
+// ErrCrossTenantBlocked (handler maps to 404 CROSS_TENANT_BLOCKED).
+//
+// Returns the ReviewAction describing the transition that was recorded.
+func (s *ExecutionService) ReviewExecution(ctx context.Context, id uuid.UUID, accepted bool, reason string, callerProjectID uuid.UUID) (*ReviewAction, error) {
+	// 1. Load + cross-tenant check.
+	current, err := s.GetExecution(ctx, id, callerProjectID)
+	if err != nil {
+		return nil, err // ErrExecutionNotFound or ErrCrossTenantBlocked
+	}
+	from := current.Status
+	if from != model.ExecutionStatusReview {
+		return nil, fmt.Errorf("review action requires status=review, got %q: %w", from, ErrInvalidStateTransition)
+	}
+
+	// 2. Compute target state + reason handling.
+	var target model.ExecutionStatus
+	var errMsg *string
+	switch {
+	case accepted:
+		// accepted=true -> completed; reason is ignored per spec.
+		target = model.ExecutionStatusCompleted
+	case !accepted && reason == "":
+		// Defense in depth: the handler already validates this (400
+		// VALIDATION_ERROR). If the handler is ever bypassed (e.g. an
+		// internal caller), this is the last guard.
+		return nil, fmt.Errorf("rejection reason is required when accepted=false")
+	case !accepted:
+		// accepted=false -> failed with reason stored in error_message.
+		target = model.ExecutionStatusFailed
+		r := reason
+		errMsg = &r
+	}
+
+	// 3. Perform the transition. UpdateExecutionStatus handles the
+	// state-machine edge validation, the store update, and the timestamp.
+	updated, err := s.UpdateExecutionStatus(ctx, id, target, errMsg, callerProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return &ReviewAction{
+		ExecutionID: updated.ExecutionID,
+		From:        from,
+		To:          updated.Status,
+		At:          time.Now().UTC(),
+	}, nil
+}
+
+// CancelExecution is the B-001 operator-cancel action. It transitions a
+// non-terminal execution to FAILED with error_message pinned to the
+// canonical operator-cancel reason. The execution must be in one of
+// {queued, assigned, running, review}; terminal states (completed,
+// failed) return 409 INVALID_STATE_TRANSITION. Cross-tenant access is
+// enforced via GetExecution (handler maps to 404 CROSS_TENANT_BLOCKED).
+//
+// The callerProjectID check is the standard F-014 guard; the service
+// does not assume the caller is an admin (the router enforces that).
+func (s *ExecutionService) CancelExecution(ctx context.Context, id uuid.UUID, callerProjectID uuid.UUID) error {
+	// 1. Load + cross-tenant check.
+	current, err := s.GetExecution(ctx, id, callerProjectID)
+	if err != nil {
+		return err // ErrExecutionNotFound or ErrCrossTenantBlocked
+	}
+	from := current.Status
+
+	// 2. Reject terminal states.
+	if from == model.ExecutionStatusCompleted || from == model.ExecutionStatusFailed {
+		return fmt.Errorf("cannot cancel a terminal execution (status=%q): %w", from, ErrInvalidStateTransition)
+	}
+
+	// 3. Transition to failed with the canonical operator-cancel reason.
+	reason := "cancelled by operator"
+	if _, err := s.UpdateExecutionStatus(ctx, id, model.ExecutionStatusFailed, &reason, callerProjectID); err != nil {
+		return err
+	}
+	return nil
+}
+
 // driveWorker is the TASK-501 runtime-driven worker driver. It
 // blocks on runtime.Wait for the spawned worker's handle, then
 // translates the WorkerResult into an execution status and
