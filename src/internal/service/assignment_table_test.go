@@ -43,6 +43,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -276,6 +277,30 @@ func TestAssignTaskToAgent_TableDriven(t *testing.T) {
 			// which yields Code: "CONFLICT", Status: 409.
 			wantErrCode: "CONFLICT",
 			wantStatus:  409,
+		},
+		{
+			name: "Error_NotesExceedsMaxBytes",
+			// 1025 "x" bytes — one past the 1 KiB cap defined
+			// in model.MaxAssignmentNotesBytes. The validation
+			// is enforced in AssignTaskToAgent after the F-014
+			// checks but before the DB roundtrip, so a bad
+			// request never even reaches the store.
+			notes:      strings.Repeat("x", int(model.MaxAssignmentNotesBytes)+1),
+			assignedBy: ptrUUID(),
+			seedExtra: func(t *testing.T, s store.Store) (uuid.UUID, uuid.UUID, uuid.UUID) {
+				projectID := uuid.New()
+				taskID, agentID := seedTaskAndAgent(t, s, projectID, "long-notes-anchor", "developer", []string{"coding"})
+				return taskID, agentID, projectID
+			},
+			wantErrCode: "VALIDATION_ERROR",
+			wantStatus:  400,
+			postAssert: func(t *testing.T, s store.Store, _ *AssignmentResult, taskID, _ uuid.UUID) {
+				// No event written — the validation fires before
+				// the transaction.
+				events, err := s.AssignmentEvents().ListByTask(context.Background(), taskID)
+				require.NoError(t, err)
+				assert.Empty(t, events)
+			},
 		},
 		// ---- F-014 cross-tenant ------------------------------------
 		{
