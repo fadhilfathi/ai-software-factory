@@ -414,7 +414,7 @@ func (h *ExecutionHandler) Review(c *gin.Context) {
 		callerProjectID,
 	)
 	if svcErr != nil {
-		h.mapError(c, svcErr)
+		h.mapError(c, svcErr, "review execution")
 		return
 	}
 	c.JSON(http.StatusOK, reviewExecutionResponse{Data: action})
@@ -449,7 +449,7 @@ func (h *ExecutionHandler) Cancel(c *gin.Context) {
 		return
 	}
 	if svcErr := h.svc.CancelExecution(c.Request.Context(), id, callerProjectID); svcErr != nil {
-		h.mapError(c, svcErr)
+		h.mapError(c, svcErr, "cancel execution")
 		return
 	}
 	c.Status(http.StatusNoContent)

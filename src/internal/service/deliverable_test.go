@@ -38,7 +38,7 @@ func newDeliverableTestService(t *testing.T) (*DeliverableService, store.Store) 
 // This signature mirrors the seedTaskAndAgent pattern from
 // assignment_test.go (TASK-420): the projectID flows through so
 // every service call has a `callerProjectID` to compare against.
-func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }
+func uuidPtr(u uuid.UUID) *uuid.UUID { return &u }
 
 func seedDeliverableTaskAndAgent(t *testing.T, s store.Store, projectID uuid.UUID) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
@@ -662,7 +662,7 @@ func TestDeliverableService_Update_CrossTenant(t *testing.T) {
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title:     "should-not-stick",
 		Content:   "should-not-stick",
-		UpdatedBy: ptrUUID(uuid.New()),
+		UpdatedBy: uuidPtr(uuid.New()),
 	}, otherProjectID)
 	assertCrossTenantBlocked(t, svcErr)
 	assert.Nil(t, updated)
@@ -682,7 +682,7 @@ func TestDeliverableService_Update_MissingProjectHeader(t *testing.T) {
 
 	updated, svcErr := svc.UpdateDeliverable(context.Background(), d.ID, UpdateDeliverableRequest{
 		Title:     "should-not-stick",
-		UpdatedBy: ptrUUID(uuid.New()),
+		UpdatedBy: uuidPtr(uuid.New()),
 	}, uuid.Nil)
 	assertMissingProjectHeader(t, svcErr)
 	assert.Nil(t, updated)
