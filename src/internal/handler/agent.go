@@ -139,7 +139,7 @@ func (h *AgentHandler) Create(c *gin.Context) {
 		respondError(c, apiErr)
 		return
 	}
-	c.JSON(http.StatusCreated, toAgentResponse(agent))
+	c.JSON(http.StatusCreated, gin.H{"data": toAgentResponse(agent)})
 }
 
 // --- GET /v1/agents ----------------------------------------------------
@@ -214,7 +214,7 @@ func (h *AgentHandler) Get(c *gin.Context) {
 		respondError(c, apiErr)
 		return
 	}
-	c.JSON(http.StatusOK, toAgentResponse(agent))
+	c.JSON(http.StatusOK, gin.H{"data": toAgentResponse(agent)})
 }
 
 // --- PUT /v1/agents/:id -----------------------------------------------
@@ -252,7 +252,7 @@ func (h *AgentHandler) Update(c *gin.Context) {
 		respondError(c, apiErr)
 		return
 	}
-	c.JSON(http.StatusOK, toAgentResponse(agent))
+	c.JSON(http.StatusOK, gin.H{"data": toAgentResponse(agent)})
 }
 
 // --- DELETE /v1/agents/:id --------------------------------------------

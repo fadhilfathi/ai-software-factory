@@ -78,7 +78,7 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		return
 	}
 
-	writeJSON(c, http.StatusCreated, toTaskResponse(task))
+	writeJSON(c, http.StatusCreated, gin.H{"data": toTaskResponse(task)})
 }
 
 func (h *TaskHandler) List(c *gin.Context) {

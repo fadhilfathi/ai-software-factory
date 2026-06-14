@@ -631,3 +631,23 @@ func assertCode(t *testing.T, body []byte, want string) {
 	require.True(t, ok, "expected error object in body, got: %s", string(body))
 	assert.Equal(t, want, errObj["code"])
 }
+// ---- D7 envelope consistency (Sprint 6, TASK-427) ------------------
+
+func TestDeliverableHandler_Create_DataEnvelope(t *testing.T) {
+	r, _, s := newDeliverableTestRouter(t, uuid.NewString())
+	taskID, agentID, projectID := seedDelivTaskAndAgent(t, s)
+
+	body := map[string]any{
+		"task_id": taskID.String(), "agent_id": agentID.String(),
+		"title": "Envelope test", "content": "# Hello",
+	}
+	w := doDelivRequestAs(r, http.MethodPost, "/v1/deliverables", body, projectID)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data, ok := resp["data"].(map[string]any)
+	require.True(t, ok, "expected top-level 'data' envelope, got body=%s", w.Body.String())
+	assert.Equal(t, "Envelope test", data["title"])
+	assert.Equal(t, 1, int(data["version"].(float64)))
+}
