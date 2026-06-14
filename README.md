@@ -1,6 +1,6 @@
 # AI Software Factory
 
-A multi-agent software development platform that orchestrates specialized AI agents (PM, Architect, Developer, Reviewer, QA, DevOps) to autonomously build software projects from a user's description.
+A multi-agent software development platform that orchestrates specialized AI agents (Manager, Architect, Developer, Reviewer, Tester, DevOps) to autonomously build software projects from a user's description.
 
 ## Architecture
 
