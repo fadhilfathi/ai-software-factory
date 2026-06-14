@@ -10,19 +10,26 @@ import (
 // ExecutionStatus is the lifecycle state of a single execution attempt.
 // Allowed transitions are enforced in the service layer:
 //
-//	pending   → running, completed, failed
-//	running   → completed, failed
+//	queued    → assigned, failed
+//	assigned  → running, failed, queued (operator/recovery return)
+//	running   → review, failed
+//	review    → completed, failed  (the only path into completed)
 //	completed → (terminal)
 //	failed    → (terminal)
 //
 // The corresponding TEXT CHECK constraint lives in
-// 008_create_executions.sql (the original table) and is reused by
-// 024_create_executions.sql — no enum is added in Sprint 4.
+// 008_create_executions.sql (the original table), 024_create_executions.sql
+// (TASK-501 re-creation), and 028_extend_executions_lifecycle.sql (B-001
+// extension from 4 to 6 states: added queued, review; renamed pending to
+// assigned; removed the direct pending → completed edge in favour of
+// the review state).
 type ExecutionStatus string
 
 const (
-	ExecutionStatusPending   ExecutionStatus = "pending"
+	ExecutionStatusQueued    ExecutionStatus = "queued"
+	ExecutionStatusAssigned  ExecutionStatus = "assigned"
 	ExecutionStatusRunning   ExecutionStatus = "running"
+	ExecutionStatusReview    ExecutionStatus = "review"
 	ExecutionStatusCompleted ExecutionStatus = "completed"
 	ExecutionStatusFailed    ExecutionStatus = "failed"
 )
@@ -31,18 +38,21 @@ const (
 // validation, swagger generation, and the in-flight index.
 func AllExecutionStatuses() []ExecutionStatus {
 	return []ExecutionStatus{
-		ExecutionStatusPending,
+		ExecutionStatusQueued,
+		ExecutionStatusAssigned,
 		ExecutionStatusRunning,
+		ExecutionStatusReview,
 		ExecutionStatusCompleted,
 		ExecutionStatusFailed,
 	}
 }
 
-// IsValidExecutionStatus returns true if s is one of the four defined
+// IsValidExecutionStatus returns true if s is one of the six defined
 // statuses. Empty string and unknown values return false.
 func IsValidExecutionStatus(s ExecutionStatus) bool {
 	switch s {
-	case ExecutionStatusPending, ExecutionStatusRunning,
+	case ExecutionStatusQueued, ExecutionStatusAssigned,
+		ExecutionStatusRunning, ExecutionStatusReview,
 		ExecutionStatusCompleted, ExecutionStatusFailed:
 		return true
 	default:
@@ -62,7 +72,8 @@ var ErrInvalidExecutionStatus = errors.New("invalid execution status")
 // that need an opaque identifier should treat it as the primary key.
 //
 // ErrorMessage is populated only when Status transitions to
-// ExecutionStatusFailed. It is nil for pending/running/completed rows.
+// ExecutionStatusFailed. It is nil for queued/assigned/running/review/
+// completed rows.
 //
 // AionAgentInstanceID is the optional Aion agent-process instance
 // identifier populated by TASK-501's aion.Runtime.Spawn path. It is
@@ -75,7 +86,7 @@ var ErrInvalidExecutionStatus = errors.New("invalid execution status")
 type Execution struct {
 	ExecutionID         uuid.UUID
 	TaskID              uuid.UUID
-	AgentID             uuid.UUID
+	AgentID             uuid.UUID // required; B-001 keeps the Sprint 5 contract that CreateExecution always carries an agent
 	Status              ExecutionStatus
 	StartedAt           time.Time
 	CompletedAt         *time.Time

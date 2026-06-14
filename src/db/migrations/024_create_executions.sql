@@ -54,7 +54,7 @@ END $$;
 
 COMMENT ON COLUMN executions.error_message IS
     'Failure detail populated when status transitions to ''failed''. '
-    'NULL for pending/running/completed.';
+    'NULL for queued/assigned/running/review/completed.';
 
 COMMENT ON COLUMN executions.updated_at IS
     'Set to NOW() on every UPDATE. The service layer writes a fresh '
@@ -71,7 +71,7 @@ COMMENT ON COLUMN executions.updated_at IS
 
 ALTER TABLE executions
     ALTER COLUMN status TYPE TEXT,
-    ALTER COLUMN status SET DEFAULT 'pending',
+    ALTER COLUMN status SET DEFAULT 'assigned',
     ALTER COLUMN status SET NOT NULL;
 
 -- Drop and re-add the CHECK so we can be sure the value set matches
@@ -90,7 +90,14 @@ END $$;
 
 ALTER TABLE executions
     ADD CONSTRAINT executions_status_check
-    CHECK (status IN ('pending', 'running', 'completed', 'failed'));
+    CHECK (status IN (
+        'queued',
+        'assigned',
+        'running',
+        'review',
+        'completed',
+        'failed'
+    ));
 
 -- ----------------------------------------------------------------------------
 -- Sprint 4 indexes
@@ -113,4 +120,4 @@ CREATE INDEX IF NOT EXISTS ix_executions_agent_id_started_at
 -- "WHERE status = ANY(...)" queries.
 CREATE INDEX IF NOT EXISTS ix_executions_in_flight
     ON executions (status)
-    WHERE status IN ('pending', 'running');
+    WHERE status IN ('assigned', 'running', 'review');

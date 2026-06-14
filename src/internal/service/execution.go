@@ -209,17 +209,40 @@ var ErrAgentNotFound = errors.New("agent not found")
 // project. TASK-422 (F-016 cross-tenant execution).
 var ErrCrossTenantBlocked = errors.New("cross-tenant access blocked")
 
-// validExecutionTransitions encodes the state machine. Terminal
-// states (completed/failed) have no outgoing edges. Same-status
+// validExecutionTransitions encodes the B-001 state machine (6 states).
+// Terminal states (completed/failed) have no outgoing edges. Same-status
 // transitions are not modelled as a separate edge — see
 // isValidExecutionTransition for the no-op handling.
+//
+// The lifecycle is:
+//
+//	queued    → assigned, failed                       (queue dispatcher)
+//	assigned  → running, failed, queued                 (worker pool, operator return)
+//	running   → review, failed                          (runtime handoff)
+//	review    → completed, failed                       (reviewer action — the only path into completed)
+//	completed → (terminal)
+//	failed    → (terminal)
+//
+// Note the deliberate absence of an `assigned → completed` direct
+// edge: every completion is mediated by the reviewer, even if the
+// reviewer is an automated acceptance test. This is the security
+// posture of B-001: the runtime cannot mark a task complete on its
+// own.
 var validExecutionTransitions = map[model.ExecutionStatus]map[model.ExecutionStatus]struct{}{
-	model.ExecutionStatusPending: {
-		model.ExecutionStatusRunning:   {},
-		model.ExecutionStatusCompleted: {},
-		model.ExecutionStatusFailed:    {},
+	model.ExecutionStatusQueued: {
+		model.ExecutionStatusAssigned: {},
+		model.ExecutionStatusFailed:   {},
+	},
+	model.ExecutionStatusAssigned: {
+		model.ExecutionStatusRunning: {},
+		model.ExecutionStatusFailed:  {},
+		model.ExecutionStatusQueued:  {}, // operator / C-002 recovery return
 	},
 	model.ExecutionStatusRunning: {
+		model.ExecutionStatusReview:  {},
+		model.ExecutionStatusFailed:  {},
+	},
+	model.ExecutionStatusReview: {
 		model.ExecutionStatusCompleted: {},
 		model.ExecutionStatusFailed:    {},
 	},
@@ -300,7 +323,7 @@ func (s *ExecutionService) CreateExecution(ctx context.Context, taskID, agentID,
 		ExecutionID: uuid.New(),
 		TaskID:      taskID,
 		AgentID:     agentID,
-		Status:      model.ExecutionStatusPending,
+		Status:      model.ExecutionStatusAssigned, // B-001: 6-state lifecycle, agent picked = assigned
 		StartedAt:   now,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -413,7 +436,7 @@ func (s *ExecutionService) mockExecution(executionID uuid.UUID) {
 		s.transitionFromMock(executionID, model.ExecutionStatusFailed, &errMsg)
 		return
 	}
-	s.transitionFromMock(executionID, model.ExecutionStatusCompleted, nil)
+	s.transitionFromMock(executionID, model.ExecutionStatusReview, nil) // B-001: mock follows the runtime handoff (running -> review, not completed)
 }
 
 // transitionFromMock is the mock goroutine's UpdateStatus path.
@@ -559,8 +582,10 @@ func (s *ExecutionService) TransitionTo(ctx context.Context, id uuid.UUID, newSt
 // handler returns; the worker must continue running. Shutdown's
 // stop-cancel path is what finally tears the driver down.
 
-// Mapping WorkerStatus -> ExecutionStatus:
-//   WorkerCompleted  -> ExecutionStatusCompleted
+// Mapping WorkerStatus -> ExecutionStatus (B-001 6-state lifecycle):
+//   WorkerCompleted  -> ExecutionStatusReview  (NOT Completed;
+//                                              the reviewer action is
+//                                              the only path into Completed)
 //   WorkerFailed     -> ExecutionStatusFailed
 //   WorkerCancelled  -> ExecutionStatusFailed (with cancel note)
 //   default/unknown  -> ExecutionStatusFailed (defensive)
@@ -604,7 +629,11 @@ func (s *ExecutionService) driveWorker(workerID uuid.UUID, handle aion.WorkerHan
 		errMsg = &msg
 		s.log.Error("aion runtime wait failed", zap.String("execution_id", execID.String()), zap.Error(err))
 	case result.Status == aion.WorkerCompleted:
-		target = model.ExecutionStatusCompleted
+		// B-001 6-state handoff: worker-complete transitions the
+		// execution to REVIEW, not COMPLETED. The reviewer action
+		// (PATCH /v1/executions/:id/review) is the only path into
+		// COMPLETED. This matches api-spec §The Execution Engine.
+		target = model.ExecutionStatusReview
 	case result.Status == aion.WorkerFailed:
 		target = model.ExecutionStatusFailed
 		if result.ErrorMessage != "" {
@@ -651,6 +680,9 @@ func workerStatusFromExecutionStatus(status model.ExecutionStatus) model.WorkerS
 	switch status {
 	case model.ExecutionStatusCompleted:
 		return model.WorkerCompleted
+	case model.ExecutionStatusReview:
+		return model.WorkerCompleted // the worker is done; the worker status
+			                       // reflects the worker, not the reviewer
 	case model.ExecutionStatusFailed:
 		return model.WorkerFailed
 	default:

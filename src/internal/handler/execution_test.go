@@ -153,7 +153,7 @@ func TestExecutionHandler_Create_201(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, resp.Data.ExecutionID)
 	assert.Equal(t, taskID, resp.Data.TaskID)
 	assert.Equal(t, agentID, resp.Data.AgentID)
-	assert.Equal(t, model.ExecutionStatusPending, resp.Data.Status)
+	assert.Equal(t, model.ExecutionStatusAssigned, resp.Data.Status)
 }
 
 func TestExecutionHandler_Create_400_BadUUID(t *testing.T) {
@@ -380,8 +380,14 @@ func TestExecutionHandler_Patch_200(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, model.ExecutionStatusRunning, resp.Data.Status)
 
-	// Now move to completed with an error_message (no-op for
-	// the state but tests that the field is accepted).
+	// B-001 6-state lifecycle: running → review → completed is the
+	// only path into 'completed' (the reviewer action lives in B-001 c3).
+	body = map[string]any{"status": "review"}
+	w = doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, model.ExecutionStatusReview, resp.Data.Status)
+
 	body = map[string]any{"status": "completed"}
 	w = doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -396,11 +402,11 @@ func TestExecutionHandler_Patch_409(t *testing.T) {
 	exec, err := svc.CreateExecution(context.Background(), taskID, agentID, projectID)
 	require.NoError(t, err)
 
-	// pending → running is valid; running → pending is not.
+	// assigned → running is valid; running → assigned is not.
 	_, err = svc.UpdateExecutionStatus(context.Background(), exec.ExecutionID, model.ExecutionStatusRunning, nil, projectID)
 	require.NoError(t, err)
 
-	body := map[string]any{"status": "pending"}
+	body := map[string]any{"status": "assigned"}
 	w := doExecutionRequest(r, http.MethodPatch, "/v1/executions/"+exec.ExecutionID.String(), projectID, body)
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Contains(t, w.Body.String(), "INVALID_STATE_TRANSITION")

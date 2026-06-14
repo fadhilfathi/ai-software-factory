@@ -20,12 +20,11 @@
 //   - Persistent state events (Postgres-backed bus).
 //
 // The 6 state values here are INTENTIONALLY a new type (Status), not
-// a redefinition of model.ExecutionStatus. model.ExecutionStatus keeps
-// its 4-value shape (pending/running/completed/failed) for the
-// existing CHECK constraint in migration 008. When Sprint 6 introduces
-// ASSIGNED and REVIEW into the database, the two types will be
-// bridged in one place (a mapper in service.StateMapper or similar)
-// so consumers can keep their Sprint 5 contracts.
+// a redefinition of model.ExecutionStatus. Under B-001, the model and
+// migration 024/028 now also use the 6-value shape (queued/assigned/
+// running/review/completed/failed). The two types are bridged in one
+// place (a mapper in service.StateMapper or similar) so consumers can
+// keep their Sprint 5 contracts.
 package events
 
 import (

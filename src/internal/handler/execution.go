@@ -75,8 +75,9 @@ type patchExecutionReq struct {
 // ----------------------------------------------------------------------------
 
 // Create handles POST /v1/executions. Returns 201 with the
-// created execution (status=pending) on success, 400 on a bad
-// UUID, 404 if the task or agent does not exist, 500 otherwise.
+// created execution (status=assigned under B-001) on success,
+// 400 on a bad UUID, 404 if the task or agent does not exist,
+// 500 otherwise.
 //
 // TASK-422: requires X-Project-ID header (400 MISSING_PROJECT_HEADER
 // if absent). The project ID is forwarded to the service as the
@@ -113,7 +114,7 @@ func (h *ExecutionHandler) Create(c *gin.Context) {
 // List handles GET /v1/executions. Query params:
 //   - task_id   (UUID, optional)
 //   - agent_id  (UUID, optional)
-//   - status    (string, optional; one of pending/running/completed/failed)
+//   - status    (string, optional; one of queued/assigned/running/review/completed/failed)
 //   - limit     (int,    optional; default 50, max 200)
 //   - cursor    (UUID,   optional; pass the NextCursor from a previous page)
 //
@@ -155,7 +156,7 @@ func (h *ExecutionHandler) List(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": gin.H{
 					"code":    "INVALID_EXECUTION_STATUS",
-					"message": "status must be one of pending/running/completed/failed",
+					"message": "status must be one of queued/assigned/running/review/completed/failed",
 				},
 			})
 			return
@@ -263,7 +264,7 @@ func (h *ExecutionHandler) Patch(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": gin.H{
 					"code":    "INVALID_EXECUTION_STATUS",
-					"message": "status must be one of pending/running/completed/failed",
+					"message": "status must be one of queued/assigned/running/review/completed/failed",
 				},
 			})
 			return
