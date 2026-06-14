@@ -111,3 +111,31 @@ to make sure the surface is stable before deep review.
   or use `SameSite=Lax` only when `APP_ENV=development`. Confirm with
   Ops during E-001.
 
+### F-D002-004 — Project-membership check never landed (HIGH, IDOR, carried from Sprint 4)
+- Cross-references: F-013 (TASK-419) and F-014 (TASK-420) in
+  `docs/sprint4/security-review.md`. Both are documented as
+  `FIXED-IN-PATCH ... path-implied (no project_memberships table yet —
+  Sprint 5+ follow-up)`.
+- Current state: `handler/agent.go:projectIDFromContext` and
+  `service/assignment.go:AssignTaskToAgent` (and the rest of the
+  path-implied checks) verify `resource.ProjectID == callerProjectID`
+  (the X-Project-ID header value). They do NOT verify that the
+  authenticated user is a member of `callerProjectID`.
+- Attack: any authenticated user can submit
+  `X-Project-ID: <known-project-UUID>` and the service will allow
+  read/write to resources in that project. The 128-bit UUID is not
+  brute-forceable, but it leaks via URLs, screenshots, social
+  engineering, or compromised log files.
+- Real fix (Sprint 6+ — OUT OF SCOPE for this combined Sprint 4+5
+  per the "ignore unfinished Sprint 4/5" directive):
+  1. Add the `project_memberships(user_id, project_id, role)` table
+     (data model §4.1 already plans it).
+  2. Add a `requireProjectMember` middleware (or service-layer check)
+     that joins `project_memberships` on `(caller.id, header.project_id)`.
+  3. Replace the `callerProjectID == uuid.Nil` early-return with a
+     `caller is not a member of callerProjectID` check.
+  4. Add per-UUID lookups to a `project_id` filter (already done in
+     service layer for the touched paths).
+- This sprint: log as D-002 OPEN finding. Surface to Guardian as the
+  top item for the security review report. No code change.
+
