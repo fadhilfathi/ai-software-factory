@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
@@ -207,12 +206,13 @@ func (f *AgentFactory) SpawnAgent(
 
 	spec := aion.WorkerSpec{
 		ExecutionID:    executionID,
+		TaskID:         executionID,
 		AgentID:        agent.ID,
 		ProjectID:      agent.ProjectID,
 		Model:          modelName,
 		Provider:       provider,
 		PermissionMode: permissionMode,
-		Input:          input,
+		Input:          json.RawMessage(input),
 		Attempt:        1,
 	}
 
@@ -242,7 +242,7 @@ func (f *AgentFactory) SpawnAgent(
 		// SIGTERM the just-spawned agent before returning the error.
 		f.mu.Unlock()
 		if pid != 0 {
-			if sigErr := syscall.Kill(pid, syscall.SIGTERM); sigErr != nil {
+			if sigErr := signalTerm(pid); sigErr != nil {
 				f.log.Warn("post-spawn SIGTERM failed (race with Shutdown)",
 					zap.String("agent_id", agent.ID.String()),
 					zap.Int("pid", pid),
@@ -345,11 +345,11 @@ func (f *AgentFactory) Shutdown(ctx context.Context) error {
 		firstCall = true
 		f.mu.Lock()
 		f.stopped = true
-		tracked := f.tracked
+		tmap := f.tracked
 		f.tracked = make(map[uuid.UUID]*tracked)
 		f.mu.Unlock()
 
-		for agentID, t := range tracked {
+		for agentID, t := range tmap {
 			if t.handle.PID == 0 {
 				// Mock runtime or unparseable handle - nothing to SIGTERM.
 				f.log.Debug("skipping SIGTERM (no PID)",
@@ -357,7 +357,7 @@ func (f *AgentFactory) Shutdown(ctx context.Context) error {
 				)
 				continue
 			}
-			if err := syscall.Kill(t.handle.PID, syscall.SIGTERM); err != nil {
+			if err := signalTerm(t.handle.PID); err != nil {
 				f.log.Warn("SIGTERM failed for tracked agent",
 					zap.String("agent_id", agentID.String()),
 					zap.Int("pid", t.handle.PID),

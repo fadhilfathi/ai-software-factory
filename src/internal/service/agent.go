@@ -435,16 +435,18 @@ func (s *agentService) validateAgentName(name string) *Error {
 	return nil
 }
 
-// validateAgentRole enforces the api-spec.md §1.1 length cap (255
-// chars) and a minimum length. Role is free text but the api-spec
-// lists reasonable defaults.
+// validateAgentRole enforces the api-spec.md §Agents length cap (80
+// chars) and a minimum length. Role is free-form text (1-80 chars)
+// per the canonical spec rewritten in the A-001 audit commit (cad9282).
+// The DB column is also VARCHAR(80) (see migration
+// 027_tighten_agent_role_length.sql).
 func (s *agentService) validateAgentRole(role string) *Error {
 	role = strings.TrimSpace(role)
 	if role == "" {
 		return validationSingle("role", "Role is required")
 	}
-	if len(role) > 255 {
-		return validationSingle("role", "Role must be 255 characters or fewer")
+	if len(role) > 80 {
+		return validationSingle("role", "Role must be 80 characters or fewer")
 	}
 	return nil
 }

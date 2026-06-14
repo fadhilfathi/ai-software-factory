@@ -74,6 +74,11 @@ func TestAgentService_Create_ValidationErrors(t *testing.T) {
 			code: "VALIDATION_ERROR",
 		},
 		{
+			name: "role too long (>80 chars) - A-001-followup",
+			req:  CreateAgentRequest{ProjectID: projectID, Name: "alpha", Role: "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr", Capabilities: []string{"coding"}},
+			code: "VALIDATION_ERROR",
+		},
+		{
 			name: "no capabilities",
 			req:  CreateAgentRequest{ProjectID: projectID, Name: "alpha", Role: "developer", Capabilities: []string{}},
 			code: "VALIDATION_ERROR",

@@ -24,7 +24,6 @@ import (
 
 	"github.com/fadhilfathi/AI-Software-Factory/internal/model"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
-	"github.com/fadhilfathi/AI-Software-Factory/internal/aion"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/service"
 	"github.com/fadhilfathi/AI-Software-Factory/internal/store"
 	"github.com/gin-gonic/gin"
@@ -64,7 +63,7 @@ func newExecutionTestRouter(t *testing.T, withUserID string) (*gin.Engine, *serv
 		MockSleep:       func() time.Duration { return 0 },
 		MockFailureRate: 0.0,
 	}
-	svc := service.NewExecutionService(s, zap.NewNop(), cfg, nil, aion.NewMockRuntime()) // TASK-501: in-process mock for handler tests
+	svc := service.NewExecutionService(s, zap.NewNop(), cfg, aion.NewMockRuntime()) // TASK-501: in-process mock for handler tests
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -227,7 +226,7 @@ func TestExecutionHandler_List_WithFilters(t *testing.T) {
 	// Cross-project semantics are covered by the new tests at the
 	// bottom of this file (TASK-422).
 	require.NoError(t, s.Tasks().Update(&model.Task{ID: taskB, ProjectID: projectA, Title: "relinked", Status: model.TaskOpen, Priority: model.PriorityNormal, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
-	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentActive, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
+	require.NoError(t, s.Agents().Update(context.Background(), &model.Agent{ID: agentB, ProjectID: projectA, Name: "relinked-b", Role: "developer", Status: model.AgentIdle, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}))
 
 	// Seed: 2 on (taskA, agentA), 1 on (taskA, agentB), 1 on (taskB, agentA).
 	for i := 0; i < 2; i++ {
